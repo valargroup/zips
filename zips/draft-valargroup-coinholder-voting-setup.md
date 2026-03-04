@@ -20,39 +20,30 @@ only when, they appear in all capitals.
 The terms below are to be interpreted as follows:
 
 Vote chain
-: A purpose-built Cosmos SDK blockchain that serves as the single source
-  of truth for all voting operations. The vote chain stores vote
-  commitments, nullifier sets, and encrypted share accumulators, and
-  verifies zero-knowledge proofs for each transaction type.
+: The blockchain that serves as the single source of truth for voting
+  operations. See [System Overview] for the state it maintains.
 
 Voting round
-: A complete instance of a coinholder vote, from round creation through
-  tally. Each round is scoped to a single Zcash mainnet snapshot and a
-  fresh Election Authority key.
+: A complete instance of a coinholder vote, scoped to a single Zcash
+  mainnet snapshot and a fresh Election Authority key.
 
 Vote round ID
-: A unique identifier for a voting round, derived from the round's
-  snapshot and proposal parameters. See [Round Creation] for the
+: A unique identifier for a voting round. See [Round Creation] for the
   computation.
 
 Poll runner
-: The entity responsible for conducting a voting round: selecting the
-  snapshot height, coordinating validators, publishing the round, and
-  overseeing the tally.
+: The entity responsible for conducting a voting round.
 
 Vote manager
-: The on-chain role that creates voting rounds. Only the vote manager
-  can publish new rounds via `MsgCreateVotingSession`.
+: The on-chain role authorized to create voting rounds.
 
 Bootstrap operator
-: The entity that generates the vote chain genesis, funds validators
-  from the token reserve, and controls initial consensus power
-  distribution.
+: The entity that provisions the vote chain genesis and initial
+  validator set.
 
 Validator
-: A vote chain consensus participant that runs the chain, participates
-  in the EA key ceremony, and contributes to the automatic tally. Each
-  validator maintains three keypairs: consensus, account, and Pallas.
+: A vote chain consensus participant. See [Validator] under Roles for
+  responsibilities and keypair details.
 
 Snapshot height
 : The Zcash mainnet block height at which eligible Orchard note balances
