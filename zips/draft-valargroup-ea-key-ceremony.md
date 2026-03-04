@@ -46,15 +46,29 @@ Voting round
 : A complete instance of a coinholder vote, scoped to a single Zcash
   mainnet snapshot and a fresh EA key.
 
+Share
+: A Shamir secret share $f(i)$ of $\mathsf{ea\_sk}$, held by a single
+  validator after the ceremony.
+
+Threshold ($t$)
+: The minimum number of shares required to reconstruct
+  $\mathsf{ea\_sk}$ or perform threshold decryption.
+
+Verification key
+: A per-validator public commitment $\mathsf{VK}_i = f(i) \cdot G$
+  used to verify that a validator received a correct share.
+
 
 # Abstract
 
 This ZIP specifies the Election Authority (EA) key ceremony used in
 Zcash shielded coinholder voting. Each voting round requires a fresh
-El Gamal keypair for encrypting vote shares. The ceremony automates
-key generation, distribution via ECIES, and validator acknowledgment,
-producing a per-round keypair that enables homomorphic tally aggregation
-and publicly verifiable decryption via Chaum-Pedersen DLEQ proofs.
+El Gamal keypair for encrypting vote shares. The ceremony uses Shamir
+threshold secret sharing to split the secret key into shares
+distributed to validators via ECIES, so that no single validator holds
+the complete key. Threshold decryption allows any $t$ validators to
+cooperatively decrypt the aggregated tally, which is then publicly
+verifiable via Chaum-Pedersen DLEQ proofs.
 
 
 # Motivation
@@ -73,16 +87,19 @@ This ZIP specifies the automated ceremony that addresses these concerns.
 
 # Privacy Implications
 
-- All validators that ACK a round's ceremony hold that round's
-  $\mathsf{ea\_sk}$. If any one of them is compromised, an adversary can
-  decrypt individual encrypted vote shares for that round, breaking
-  vote-amount privacy. Voter identity remains protected because alternate
-  nullifiers are unlinkable to on-chain spending.
+- The dealer generates $\mathsf{ea\_sk}$ and learns it during key
+  generation before erasing it. This is the primary trust assumption:
+  the dealer is a consensus-participating validator, automatically
+  rotated via block proposer selection. A future DKG upgrade path would
+  eliminate this (see [Rationale]).
+- Individual validators hold only a Shamir share of
+  $\mathsf{ea\_sk}$, not the full key. An adversary needs to compromise
+  at least $t$ validators (where $t = \lceil n/2 \rceil$) to
+  reconstruct the secret and decrypt individual vote shares.
+  Voter identity remains protected because alternate nullifiers are
+  unlinkable to on-chain spending.
 - Each round uses a fresh $\mathsf{ea\_sk}$. Compromise of one round's
-  key does not affect privacy of past or future rounds.
-- The dealer learns $\mathsf{ea\_sk}$ by construction. In the current
-  trusted-dealer model, the dealer has the same capabilities as any
-  other ACK'd validator for that round.
+  key material does not affect privacy of past or future rounds.
 
 
 # Requirements
@@ -90,16 +107,18 @@ This ZIP specifies the automated ceremony that addresses these concerns.
 - A fresh EA keypair is generated for each voting round with no manual
   intervention.
 - The ceremony completes with partial validator availability (at least
-  one-third of eligible validators).
+  a majority of eligible validators).
 - No single validator's non-cooperation blocks the ceremony indefinitely.
 - The resulting keypair enables homomorphic aggregation and publicly
   verifiable decryption.
+- No single validator (other than the dealer during key generation)
+  learns the full $\mathsf{ea\_sk}$.
 
 
 # Non-requirements
 
-- Threshold secret sharing or distributed key generation (future upgrade;
-  see [Security Considerations]).
+- Distributed key generation that eliminates the trusted dealer (future
+  upgrade; see [Rationale]).
 - The voting protocol itself: delegation, vote casting, share submission,
   and share reveal circuits (see [^draft-voting-protocol]).
 - Vote chain infrastructure setup (see [^draft-coinholder-voting]).
@@ -197,11 +216,12 @@ No trust in the EA or validators is required.
 
 ## ECIES on Pallas
 
-This section defines the ECIES construction used to distribute
-$\mathsf{ea\_sk}$ to validators during the ceremony.
+This section defines the ECIES construction used to distribute Shamir
+shares to validators during the ceremony.
 
 For a recipient validator $V_i$ with Pallas public key
-$\mathsf{pk}_i = \mathsf{sk}_i \cdot G$:
+$\mathsf{pk}_i = \mathsf{sk}_i \cdot G$, and plaintext $m$
+(the serialized share $f(i)$):
 
 **Encryption** (by the dealer):
 
@@ -211,15 +231,16 @@ $\mathsf{pk}_i = \mathsf{sk}_i \cdot G$:
 3. Derive symmetric key
    $k_i = \mathsf{SHA256}(E_i \| S_i.x)$ where $S_i.x$ is the
    $x$-coordinate of $S_i$.
-4. Encrypt: $\mathsf{ct}_i = \mathsf{ChaCha20\text{-}Poly1305}(k_i, \mathsf{nonce}{=}0, \mathsf{ea\_sk})$.
+4. Encrypt: $\mathsf{ct}_i = \mathsf{ChaCha20\text{-}Poly1305}(k_i, \mathsf{nonce}{=}0, m)$.
 5. Output $(E_i, \mathsf{ct}_i)$.
 
 **Decryption** (by validator $V_i$):
 
 1. Compute $S_i = \mathsf{sk}_i \cdot E_i$.
 2. Derive $k_i = \mathsf{SHA256}(E_i \| S_i.x)$.
-3. Decrypt $\mathsf{ea\_sk} = \mathsf{ChaCha20\text{-}Poly1305.decrypt}(k_i, \mathsf{nonce}{=}0, \mathsf{ct}_i)$.
-4. Verify $\mathsf{ea\_sk} \cdot G = \mathsf{ea\_pk}$.
+3. Decrypt $m = \mathsf{ChaCha20\text{-}Poly1305.decrypt}(k_i, \mathsf{nonce}{=}0, \mathsf{ct}_i)$.
+4. Parse $m$ as share $f(i)$ and verify
+   $f(i) \cdot G = \mathsf{VK}_i$.
 
 A fresh ephemeral scalar $e_i$ MUST be generated for each validator to
 prevent cross-validator key correlation.
@@ -240,26 +261,40 @@ The next block proposer is automatically selected as the dealer.
 
 ### Key Generation and Distribution
 
+Let $n$ be the number of eligible validators and
+$t = \lceil n/2 \rceil$ (minimum 2) be the threshold.
+
 The dealer:
 
 1. Generates $\mathsf{ea\_sk} \leftarrow \mathbb{F}_{q_{\mathbb{P}}}$ and
    computes $\mathsf{ea\_pk} = \mathsf{ea\_sk} \cdot G$.
-2. For each eligible validator $V_i$, encrypts $\mathsf{ea\_sk}$ to
+2. Constructs a random polynomial
+   $f(x) = \mathsf{ea\_sk} + a_1 x + \cdots + a_{t-1} x^{t-1}$
+   of degree $t - 1$ with $f(0) = \mathsf{ea\_sk}$ and random
+   coefficients
+   $a_1, \ldots, a_{t-1} \leftarrow \mathbb{F}_{q_{\mathbb{P}}}$.
+3. Evaluates $f(i)$ for $i = 1, \ldots, n$ to produce $n$ Shamir
+   shares [^shamir].
+4. Computes verification keys $\mathsf{VK}_i = f(i) \cdot G$ for each
+   share.
+5. For each eligible validator $V_i$, encrypts the share $f(i)$ to
    $\mathsf{pk}_i$ using the ECIES construction defined in
    [ECIES on Pallas], producing $(E_i, \mathsf{ct}_i)$.
-3. Publishes $\mathsf{ea\_pk}$ and all $(E_i, \mathsf{ct}_i)$ pairs to the
-   chain.
+6. Publishes to the chain: $\mathsf{ea\_pk}$, the threshold $t$, all
+   $(E_i, \mathsf{ct}_i)$ pairs, and all $\mathsf{VK}_i$.
+7. Securely erases $\mathsf{ea\_sk}$, the polynomial coefficients, and
+   all share values from memory.
 
 ### Validator Acknowledgment
 
-Each eligible validator:
+Each eligible validator $V_i$:
 
-1. Decrypts $\mathsf{ea\_sk}$ from $(E_i, \mathsf{ct}_i)$ per
-   [ECIES on Pallas].
-2. Verifies that $\mathsf{ea\_sk} \cdot G = \mathsf{ea\_pk}$.
-3. Stores $\mathsf{ea\_sk}$ securely on disk.
-4. Submits an ACK message to the chain containing a signature over
-   $\mathsf{H}(\texttt{"ack"} \| \mathsf{vote\_round\_id} \| \mathsf{validator\_index})$.
+1. Decrypts share $f(i)$ from $(E_i, \mathsf{ct}_i)$ per
+   [ECIES on Pallas], which includes verification that
+   $f(i) \cdot G = \mathsf{VK}_i$.
+2. Stores $f(i)$ securely on disk.
+3. Submits an ACK message to the chain containing the commitment
+   $\mathsf{SHA256}(\texttt{"ack"} \| \mathsf{ea\_pk} \| \mathsf{validator\_address})$.
 
 ### Confirmation
 
@@ -268,29 +303,32 @@ The ceremony confirms under one of the following conditions:
 - **Fast path**: all eligible validators ACK. The ceremony confirms
   immediately.
 - **Timeout path**: after the ACK phase timeout (30 minutes), if at least
-  one-third of eligible validators have ACK'd, the ceremony confirms.
-  Non-ACK'd validators are stripped from the round and increment a
+  a majority of eligible validators have ACK'd (i.e.,
+  $\mathsf{acks} \times 2 \geq n$), the ceremony confirms. Non-ACK'd
+  validators are stripped from the round and increment a
   consecutive-miss counter. After 3 consecutive misses, the validator
   MUST be jailed.
-- **Failure**: if fewer than one-third of eligible validators ACK within
+- **Failure**: if fewer than a majority of eligible validators ACK within
   the timeout, the ceremony resets and a new dealer is selected.
+
+The majority threshold ensures that at least $t$ shares are available
+for threshold decryption during the tally phase.
 
 On successful confirmation, the round transitions from **PENDING** to
 **ACTIVE**.
 
 ### Validator Set Changes
 
-**Joining**: when a new validator registers a Pallas public key after the
-ceremony, any existing ACK'd validator MAY encrypt $\mathsf{ea\_sk}$ to
-the new validator's key using [ECIES on Pallas] and publish it to the
-chain. The new validator decrypts, verifies, and ACKs.
+**Joining**: in the threshold model, new validators joining after the
+ceremony cannot receive an independent share without a new dealing round.
+An existing ACK'd validator MAY forward their own share to the new
+validator via [ECIES on Pallas], allowing the new validator to
+participate in threshold decryption using the forwarded share.
 
-**Leaving**: a departing validator retains $\mathsf{ea\_sk}$ and cannot be
-forced to delete it. Under the current trust model this is acceptable —
-compromise only affects vote-amount privacy, not voter identity. Key
-rotation (generating a fresh $\mathsf{ea\_sk'}$ for future rounds) limits
-exposure. See [Security Considerations] for the TSS upgrade path that
-cryptographically excludes departed validators.
+**Leaving**: a departing validator retains their share $f(i)$ and cannot
+be forced to delete it. Under the threshold model, a single share does
+not reveal $\mathsf{ea\_sk}$. Key rotation (generating a fresh
+$\mathsf{ea\_sk'}$ for future rounds) further limits exposure.
 
 ## Tally
 
@@ -301,14 +339,34 @@ After the voting window closes and the round transitions to **TALLYING**:
    submitted share ciphertexts. This aggregation is publicly verifiable —
    anyone can replay the addition from on-chain data.
 
-2. Any validator holding $\mathsf{ea\_sk}$ decrypts the aggregate per
-   [Decryption] and recovers $\mathsf{total\_value}$ via baby-step-giant-step.
+2. At least $t$ validators submit partial decryptions to the chain.
+   Each participating validator $V_i$ computes:
 
-3. The decryptor publishes $\mathsf{total\_value}$ for each
-   (proposal, decision) pair along with the DLEQ proof per
-   [Chaum-Pedersen DLEQ Proof].
+   $$D_i = f(i) \cdot C_{1,\text{agg}}$$
 
-4. Any party MAY verify the proof against the on-chain aggregate
+3. The partial decryptions are combined via Lagrange interpolation in
+   the exponent. Given partial decryptions $\{(i, D_i)\}$ from a set
+   $S$ of at least $t$ validators, the Lagrange coefficients are:
+
+   $$\lambda_i = \prod_{j \in S,\, j \neq i} \frac{-j}{i - j}$$
+
+   The combined result is:
+
+   $$\mathsf{ea\_sk} \cdot C_{1,\text{agg}} = \sum_{i \in S} \lambda_i \cdot D_i$$
+
+4. The aggregate plaintext is recovered:
+
+   $$\mathsf{total\_value} \cdot G = C_{2,\text{agg}} - \mathsf{ea\_sk} \cdot C_{1,\text{agg}}$$
+
+   $\mathsf{total\_value}$ is recovered via baby-step-giant-step.
+
+5. Any set of $t$ validators MAY cooperate to reconstruct
+   $\mathsf{ea\_sk}$ from their shares and produce the DLEQ proof per
+   [Chaum-Pedersen DLEQ Proof]. The decryptor publishes
+   $\mathsf{total\_value}$ for each (proposal, decision) pair along
+   with the proof.
+
+6. Any party MAY verify the proof against the on-chain aggregate
    ciphertexts and $\mathsf{ea\_pk}$.
 
 Individual vote amounts are never revealed — only the aggregate total per
@@ -316,9 +374,9 @@ Individual vote amounts are never revealed — only the aggregate total per
 
 ## Key Retention
 
-The $\mathsf{ea\_sk}$ file for each round MUST be retained indefinitely
-(32 bytes per key) to allow future retally or audit. Keys MUST NOT be
-deleted.
+Each validator's share file for each round MUST be retained indefinitely
+(32 bytes per share) to allow future retally or audit. Share files MUST
+NOT be deleted.
 
 ## Timing Parameters
 
@@ -338,9 +396,22 @@ rounds is handled naturally — departing validators cannot decrypt future
 rounds. This avoids the complexity of re-initialization or long-lived key
 management.
 
-**Trusted dealer**: the current model is simple and sufficient for the
-initial deployment. The dealer is a validator already trusted for consensus
-and is automatically rotated via block proposer selection.
+**Threshold secret sharing**: splitting $\mathsf{ea\_sk}$ into Shamir
+shares ensures that no single validator (other than the dealer at
+generation time) holds the complete secret key. Compromise of fewer than
+$t$ validators does not reveal the key. The threshold
+$t = \lceil n/2 \rceil$ balances liveness (not requiring all validators
+for decryption) with privacy (requiring a majority to collude for key
+reconstruction).
+
+**Trusted dealer with future DKG upgrade**: the dealer generates and
+momentarily holds $\mathsf{ea\_sk}$ before erasing it. This is simpler
+than a full distributed key generation (DKG) protocol and sufficient for
+the initial deployment, given that the dealer is a validator already
+trusted for consensus and is automatically rotated via block proposer
+selection. A future DKG upgrade would eliminate this trust assumption
+entirely by having validators jointly generate $\mathsf{ea\_pk}$ without
+any single party ever holding $\mathsf{ea\_sk}$.
 
 **ECIES on Pallas**: reuses the Pallas curve already present in the Orchard
 protocol, avoiding additional curve dependencies. ChaCha20-Poly1305
@@ -353,30 +424,28 @@ This is a liveness signal, not a safety violation.
 
 # Security Considerations
 
-**Trust model**: all ACK'd validators hold $\mathsf{ea\_sk}$ for the
-round. Compromise of any single validator breaks vote-amount privacy for
-that round. Voter identity remains protected because alternate nullifiers
-are unlinkable to on-chain spending.
+**Trust model**: the dealer generates and momentarily holds
+$\mathsf{ea\_sk}$ before distributing shares and erasing the secret.
+This is the primary trust assumption. Individual validators hold only
+Shamir shares — an adversary needs at least $t$ shares to reconstruct
+the key and decrypt individual vote shares. Voter identity remains
+protected because alternate nullifiers are unlinkable to on-chain
+spending.
 
-**Key isolation**: each round uses a different $\mathsf{ea\_sk}$. A
-validator compromised after one round cannot decrypt votes in subsequent
-rounds.
+**Key isolation**: each round uses a different $\mathsf{ea\_sk}$ and
+shares. A validator compromised after one round cannot decrypt votes in
+subsequent rounds.
 
-**Trusted dealer limitation**: the dealer generates and knows
-$\mathsf{ea\_sk}$. In the current model, this is equivalent to any other
-ACK'd validator's knowledge. A future upgrade path is:
-
-1. **Threshold secret sharing** (t-of-n Shamir shares with Feldman
-   commitments): the dealer distributes shares such that no single
-   validator holds the full key. Decryption requires cooperation of at
-   least $t$ validators.
-2. **Distributed key generation** (DKG): eliminates the trusted dealer
-   entirely. Validators jointly generate $\mathsf{ea\_pk}$ without any
-   single party ever holding the complete $\mathsf{ea\_sk}$.
+**Trusted dealer limitation**: the dealer knows $\mathsf{ea\_sk}$ during
+key generation, giving it the ability to decrypt all vote shares for
+that round before erasing the key. The dealer is automatically rotated
+via block proposer selection, limiting the window of exposure. See
+[Rationale] for the DKG upgrade path that would eliminate this
+assumption.
 
 **Post-quantum**: El Gamal encryption is breakable by a quantum adversary
 with a sufficiently large quantum computer. A successful attack would
-expose individual share amounts for the affected round. Post-quantum
+expose individual vote share amounts for the affected round. Post-quantum
 migration is out of scope for this ZIP.
 
 
@@ -402,5 +471,7 @@ circuits.
 [^cp92]: [D. Chaum and T. P. Pedersen, "Wallet Databases with Observers", in Advances in Cryptology — CRYPTO '92, pp. 89-105, 1993](https://doi.org/10.1007/3-540-48071-4_7)
 
 [^ecies]: [V. Shoup, "A Proposal for an ISO Standard for Public Key Encryption", version 2.1, 2001](https://www.shoup.net/papers/iso-2_1.pdf)
+
+[^shamir]: [A. Shamir, "How to share a secret", Communications of the ACM, vol. 22, no. 11, pp. 612-613, 1979](https://doi.org/10.1145/359168.359176)
 
 [^protocol-pallasandvesta]: [Zcash Protocol Specification, Version 2025.6.3 [NU6.1]. Section 5.4.9.6: Pallas and Vesta](protocol/protocol.pdf#pallasandvesta)
