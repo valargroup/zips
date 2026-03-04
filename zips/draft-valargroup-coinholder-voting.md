@@ -122,6 +122,31 @@ details specified in the companion ZIPs. A poll runner reads this document
 and knows what to do; a circuit implementer reads the companion ZIPs and
 knows what to prove.
 
+# Privacy Implications
+
+The voting system is designed so that no single party learns any
+individual voter's identity, vote choice, or balance. However, the
+following trust assumptions and residual risks apply at the deployment
+level:
+
+- **EA key compromise**: all validators that ACK a round's ceremony hold
+  the round's Election Authority secret key. If any one of them is
+  compromised, an adversary can decrypt individual encrypted vote shares
+  for that round, breaking vote-amount privacy. Voter identity remains
+  protected because alternate nullifiers are unlinkable to on-chain
+  spending activity.
+- **Helper server metadata**: helper servers observe encrypted shares and
+  the voter's decision index (which proposal option was chosen). They do
+  not learn plaintext amounts or voter identity. An adversary controlling
+  a helper server could correlate the timing of wallet submissions with
+  on-chain share reveals to narrow the anonymity set.
+- **PIR server access pattern**: communication with the PIR server reveals
+  that the client is participating in the voting process, though the PIR
+  protocol hides which specific nullifier is being queried.
+- **Per-round isolation**: each round uses a fresh EA key. Compromise of
+  one round's key does not affect privacy of past or future rounds.
+
+
 # Requirements
 
 - A new poll runner can conduct a vote by following this specification and
