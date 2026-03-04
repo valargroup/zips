@@ -147,7 +147,7 @@ Each eligible validator:
 1. Decrypts $\mathsf{ea\_sk}$ from its ECIES ciphertext using its Pallas
    secret key.
 2. Verifies that $\mathsf{ea\_sk} \cdot G = \mathsf{ea\_pk}$.
-3. Submits an ACK message via `PrepareProposal`.
+3. Submits an ACK message to the chain.
 
 ### Confirmation
 
@@ -182,22 +182,14 @@ After the voting window closes and the round transitions to **TALLYING**:
    logarithm (feasible because $\mathsf{total\_value}$ is bounded by total
    ZEC supply).
 
-3. The proposer submits `MsgSubmitTally` with the recovered values and a
-   Chaum-Pedersen DLEQ proof [^cp92] demonstrating correct decryption.
-
-4. Results are queryable via the REST API:
-
-       GET /zally/v1/tally-results/{round_id}
-
-   The response contains, for each (proposal, decision) pair, the
-   `total_value` in zatoshi.
+3. The proposer publishes the recovered values and a Chaum-Pedersen
+   DLEQ proof [^cp92] demonstrating correct decryption.
 
 ### DLEQ Verification
 
-Any party with access to the chain state MAY independently verify the
-tally by checking the DLEQ proof against $\mathsf{ea\_pk}$, the aggregate
-ciphertexts, and the claimed totals. No trust in the EA or validators is
-required.
+Any party MAY independently verify the tally by checking the DLEQ proof
+against $\mathsf{ea\_pk}$, the aggregate ciphertexts, and the claimed
+totals. No trust in the EA or validators is required.
 
 ## Key Retention
 
@@ -278,7 +270,7 @@ circuits.
 
 [^zip-1016]: [ZIP 1016: Community and Coinholder Funding Model](zip-1016.md)
 
-[^draft-coinholder-voting]: [Draft ZIP: Zcash Shielded Coinholder Voting](draft-valargroup-coinholder-voting.md)
+[^draft-coinholder-voting]: [Draft ZIP: Zcash Shielded Coinholder Voting](draft-valargroup-coinholder-voting-setup.md)
 
 [^draft-voting-protocol]: [Draft ZIP: Zcash Shielded Voting Protocol](draft-valargroup-voting-protocol.md)
 
