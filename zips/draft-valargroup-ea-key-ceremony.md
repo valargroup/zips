@@ -20,33 +20,31 @@ only when, they appear in all capitals.
 The terms below are to be interpreted as follows:
 
 Election Authority (EA)
-: A logical role whose secret key $\mathsf{ea\_sk}$ is used for El Gamal
-  encryption [^elgamal] of vote shares. In the current design, all ACK'd
-  validators hold $\mathsf{ea\_sk}$ for the round.
+: A logical role whose keypair $(\mathsf{ea\_sk}, \mathsf{ea\_pk})$
+  governs El Gamal encryption [^elgamal] of vote shares for a given
+  voting round.
 
 EA key ceremony
 : A per-round protocol that produces a fresh El Gamal keypair
-  $(\mathsf{ea\_sk}, \mathsf{ea\_pk})$ and distributes it to eligible
-  validators via ECIES [^ecies].
+  $(\mathsf{ea\_sk}, \mathsf{ea\_pk})$ and distributes key material to
+  eligible validators.
 
 Dealer
-: The validator selected to generate the EA keypair and distribute it to
-  all eligible validators. The next block proposer is automatically
-  selected as dealer.
+: The validator selected to generate the EA keypair and distribute key
+  material to eligible validators.
 
 Vote chain
-: A purpose-built Cosmos SDK blockchain that serves as the single source
-  of truth for voting operations. See the Coinholder Voting Process
+: The blockchain that serves as the single source of truth for voting
+  operations. See the Coinholder Voting Process
   ZIP [^draft-coinholder-voting] for infrastructure details.
 
 Validator
-: A vote chain consensus participant. Each validator maintains three
-  keypairs: consensus (CometBFT), account (chain transactions), and
-  Pallas (ECIES key exchange during the ceremony).
+: A vote chain consensus participant that maintains keypairs for
+  consensus, account transactions, and Pallas-based key exchange.
 
 Voting round
-: A complete instance of a coinholder vote. Each round is scoped to a
-  single Zcash mainnet snapshot and a fresh EA key.
+: A complete instance of a coinholder vote, scoped to a single Zcash
+  mainnet snapshot and a fresh EA key.
 
 
 # Abstract
