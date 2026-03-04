@@ -134,16 +134,19 @@ this section for vote share encryption.
 
 ### Setup
 
-Let $G$ be the generator of the prime-order subgroup of the Pallas
-curve [^protocol-pallasandvesta], with scalar field
+Let $G$ be the Pallas generator defined as
+$\mathcal{G}^{\mathsf{Orchard}}$ in the Zcash protocol
+specification [^protocol-orchardkeycomponents] (the Orchard spend
+authorization base point). The scalar field is
 $\mathbb{F}_{q_{\mathbb{P}}}$. The EA keypair is:
 
 - $\mathsf{ea\_sk} \in \mathbb{F}_{q_{\mathbb{P}}}$: a random scalar.
 - $\mathsf{ea\_pk} = \mathsf{ea\_sk} \cdot G$: the corresponding public
   key.
 
-$G$ MUST be the standard Pallas generator. Using an arbitrary point would
-break the homomorphic property.
+All El Gamal, ECIES, and DLEQ operations in this ZIP MUST use this
+generator. Using an arbitrary point would break the homomorphic property
+and compatibility with the voting circuit.
 
 ### Encryption
 
@@ -240,15 +243,18 @@ $\mathsf{pk}_i = \mathsf{sk}_i \cdot G$, and plaintext $m$
    and compute ephemeral public key $E_i = e_i \cdot G$.
 2. Compute ECDH shared secret $S_i = e_i \cdot \mathsf{pk}_i$.
 3. Derive symmetric key
-   $k_i = \mathsf{SHA256}(E_i \| S_i.x)$ where $S_i.x$ is the
-   $x$-coordinate of $S_i$.
+   $k_i = \mathsf{SHA256}(\mathsf{compress}(E_i) \| \mathsf{x}(S_i))$
+   where $\mathsf{compress}$ is the 32-byte compressed Pallas point
+   encoding and $\mathsf{x}(S_i)$ is the $x$-coordinate of $S_i$
+   extracted by taking the compressed encoding and clearing bit 7 of
+   byte 31 (the sign bit).
 4. Encrypt: $\mathsf{ct}_i = \mathsf{ChaCha20\text{-}Poly1305}(k_i, \mathsf{nonce}{=}0, m)$.
 5. Output $(E_i, \mathsf{ct}_i)$.
 
 **Decryption** (by validator $V_i$):
 
 1. Compute $S_i = \mathsf{sk}_i \cdot E_i$.
-2. Derive $k_i = \mathsf{SHA256}(E_i \| S_i.x)$.
+2. Derive $k_i = \mathsf{SHA256}(\mathsf{compress}(E_i) \| \mathsf{x}(S_i))$.
 3. Decrypt $m = \mathsf{ChaCha20\text{-}Poly1305.decrypt}(k_i, \mathsf{nonce}{=}0, \mathsf{ct}_i)$.
 4. Parse $m$ as share $f(i)$ and verify
    $f(i) \cdot G = \mathsf{VK}_i$.
@@ -486,3 +492,5 @@ circuits.
 [^shamir]: [A. Shamir, "How to share a secret", Communications of the ACM, vol. 22, no. 11, pp. 612-613, 1979](https://doi.org/10.1145/359168.359176)
 
 [^protocol-pallasandvesta]: [Zcash Protocol Specification, Version 2025.6.3 [NU6.1]. Section 5.4.9.6: Pallas and Vesta](protocol/protocol.pdf#pallasandvesta)
+
+[^protocol-orchardkeycomponents]: [Zcash Protocol Specification, Version 2025.6.3 [NU6.1]. Section 4.2.3: Orchard Key Components](protocol/protocol.pdf#orchardkeycomponents)
