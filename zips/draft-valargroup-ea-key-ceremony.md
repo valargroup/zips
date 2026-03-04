@@ -109,11 +109,127 @@ This ZIP specifies the automated ceremony that addresses these concerns.
 
 # Specification
 
+## El Gamal on Pallas
+
+This section defines the El Gamal encryption scheme used throughout the
+voting system. The Voting Protocol ZIP [^draft-voting-protocol] references
+this section for vote share encryption.
+
+### Setup
+
+Let $G$ be the generator of the prime-order subgroup of the Pallas
+curve [^protocol-pallasandvesta], with scalar field
+$\mathbb{F}_{q_{\mathbb{P}}}$. The EA keypair is:
+
+- $\mathsf{ea\_sk} \in \mathbb{F}_{q_{\mathbb{P}}}$: a random scalar.
+- $\mathsf{ea\_pk} = \mathsf{ea\_sk} \cdot G$: the corresponding public
+  key.
+
+$G$ MUST be the standard Pallas generator. Using an arbitrary point would
+break the homomorphic property.
+
+### Encryption
+
+To encrypt a value $v$ (expressed in ballots, i.e., zatoshi
+floor-divided by 12,500,000) with randomness
+$r \leftarrow \mathbb{F}_{q_{\mathbb{P}}}$:
+
+$$
+\mathsf{Enc}(v, r) = (r \cdot G, \; v \cdot G + r \cdot \mathsf{ea\_pk})
+$$
+
+The ciphertext is a pair of Pallas points $(C_1, C_2)$.
+
+### Additive Homomorphism
+
+Given ciphertexts $\mathsf{Enc}(a, r_1)$ and $\mathsf{Enc}(b, r_2)$,
+component-wise point addition yields a valid encryption of the sum:
+
+$$
+\mathsf{Enc}(a, r_1) + \mathsf{Enc}(b, r_2) = \mathsf{Enc}(a + b, \; r_1 + r_2)
+$$
+
+This allows anyone to publicly aggregate encrypted vote shares without
+decryption. The vote chain accumulates per-(proposal, decision) aggregates
+by summing ciphertexts as share reveal transactions arrive.
+
+### Decryption
+
+Given an aggregate ciphertext $(C_{1,\text{agg}}, C_{2,\text{agg}})$ and
+$\mathsf{ea\_sk}$:
+
+$$
+C_{2,\text{agg}} - \mathsf{ea\_sk} \cdot C_{1,\text{agg}} = \mathsf{total\_value} \cdot G
+$$
+
+To recover $\mathsf{total\_value}$ from
+$\mathsf{total\_value} \cdot G$, the decryptor performs a bounded
+discrete logarithm lookup using baby-step-giant-step. This is feasible
+because $\mathsf{total\_value}$ is bounded by total ZEC supply
+(approximately $2.1 \times 10^{15}$ zatoshi, or $1.68 \times 10^{8}$
+ballots).
+
+### Chaum-Pedersen DLEQ Proof
+
+After decryption, the decryptor MUST publish a Chaum-Pedersen DLEQ
+proof [^cp92] demonstrating that the same $\mathsf{ea\_sk}$ used to
+generate $\mathsf{ea\_pk}$ was used to decrypt the aggregate. The proof
+establishes:
+
+$$
+\log_G(\mathsf{ea\_pk}) = \log_{C_{1,\text{agg}}}(\mathsf{ea\_pk} \cdot C_{1,\text{agg}}^{-1} \cdot \ldots)
+$$
+
+Concretely, the prover demonstrates knowledge of $\mathsf{ea\_sk}$ such
+that $\mathsf{ea\_pk} = \mathsf{ea\_sk} \cdot G$ and
+$D = \mathsf{ea\_sk} \cdot C_{1,\text{agg}}$ where
+$D = C_{2,\text{agg}} - \mathsf{total\_value} \cdot G$. The proof is:
+
+1. Prover samples $k \leftarrow \mathbb{F}_{q_{\mathbb{P}}}$ and computes
+   $R_1 = k \cdot G$ and $R_2 = k \cdot C_{1,\text{agg}}$.
+2. Challenge: $c = \mathsf{H}(G \| \mathsf{ea\_pk} \| C_{1,\text{agg}} \| D \| R_1 \| R_2)$
+   where $\mathsf{H}$ is a hash-to-scalar function.
+3. Response: $s = k - c \cdot \mathsf{ea\_sk}$.
+4. Verifier checks: $s \cdot G + c \cdot \mathsf{ea\_pk} = R_1$ and
+   $s \cdot C_{1,\text{agg}} + c \cdot D = R_2$.
+
+Any party MAY independently verify the tally using only the on-chain data
+($\mathsf{ea\_pk}$, aggregate ciphertexts, claimed totals, and the proof).
+No trust in the EA or validators is required.
+
+## ECIES on Pallas
+
+This section defines the ECIES construction used to distribute
+$\mathsf{ea\_sk}$ to validators during the ceremony.
+
+For a recipient validator $V_i$ with Pallas public key
+$\mathsf{pk}_i = \mathsf{sk}_i \cdot G$:
+
+**Encryption** (by the dealer):
+
+1. Generate ephemeral scalar $e_i \leftarrow \mathbb{F}_{q_{\mathbb{P}}}$
+   and compute ephemeral public key $E_i = e_i \cdot G$.
+2. Compute ECDH shared secret $S_i = e_i \cdot \mathsf{pk}_i$.
+3. Derive symmetric key
+   $k_i = \mathsf{SHA256}(E_i \| S_i.x)$ where $S_i.x$ is the
+   $x$-coordinate of $S_i$.
+4. Encrypt: $\mathsf{ct}_i = \mathsf{ChaCha20\text{-}Poly1305}(k_i, \mathsf{nonce}{=}0, \mathsf{ea\_sk})$.
+5. Output $(E_i, \mathsf{ct}_i)$.
+
+**Decryption** (by validator $V_i$):
+
+1. Compute $S_i = \mathsf{sk}_i \cdot E_i$.
+2. Derive $k_i = \mathsf{SHA256}(E_i \| S_i.x)$.
+3. Decrypt $\mathsf{ea\_sk} = \mathsf{ChaCha20\text{-}Poly1305.decrypt}(k_i, \mathsf{nonce}{=}0, \mathsf{ct}_i)$.
+4. Verify $\mathsf{ea\_sk} \cdot G = \mathsf{ea\_pk}$.
+
+A fresh ephemeral scalar $e_i$ MUST be generated for each validator to
+prevent cross-validator key correlation.
+
 ## Ceremony Protocol
 
-Each voting round triggers a fresh EA key ceremony after
-`MsgCreateVotingSession` is accepted and the round enters the **PENDING**
-state.
+Each voting round triggers a fresh EA key ceremony after the round enters
+the **PENDING** state.
 
 ### Eligibility
 
@@ -128,26 +244,24 @@ The next block proposer is automatically selected as the dealer.
 
 The dealer:
 
-1. Generates a random scalar $\mathsf{ea\_sk} \in \mathbb{F}_{q_{\mathbb{P}}}$.
-2. Computes $\mathsf{ea\_pk} = \mathsf{ea\_sk} \cdot G$ where $G$ is the
-   Pallas generator.
-3. For each eligible validator $V_i$ with Pallas public key $\mathsf{pk}_i$:
-   a. Performs ephemeral ECDH on the Pallas curve: generates ephemeral
-      scalar $e_i$, computes shared secret from $e_i \cdot \mathsf{pk}_i$.
-   b. Derives a symmetric key from the shared secret.
-   c. Encrypts $\mathsf{ea\_sk}$ using ChaCha20-Poly1305 with the derived
-      key.
-4. Publishes $\mathsf{ea\_pk}$ and the per-validator ECIES ciphertexts to
-   the chain.
+1. Generates $\mathsf{ea\_sk} \leftarrow \mathbb{F}_{q_{\mathbb{P}}}$ and
+   computes $\mathsf{ea\_pk} = \mathsf{ea\_sk} \cdot G$.
+2. For each eligible validator $V_i$, encrypts $\mathsf{ea\_sk}$ to
+   $\mathsf{pk}_i$ using the ECIES construction defined in
+   [ECIES on Pallas], producing $(E_i, \mathsf{ct}_i)$.
+3. Publishes $\mathsf{ea\_pk}$ and all $(E_i, \mathsf{ct}_i)$ pairs to the
+   chain.
 
 ### Validator Acknowledgment
 
 Each eligible validator:
 
-1. Decrypts $\mathsf{ea\_sk}$ from its ECIES ciphertext using its Pallas
-   secret key.
+1. Decrypts $\mathsf{ea\_sk}$ from $(E_i, \mathsf{ct}_i)$ per
+   [ECIES on Pallas].
 2. Verifies that $\mathsf{ea\_sk} \cdot G = \mathsf{ea\_pk}$.
-3. Submits an ACK message to the chain.
+3. Stores $\mathsf{ea\_sk}$ securely on disk.
+4. Submits an ACK message to the chain containing a signature over
+   $\mathsf{H}(\texttt{"ack"} \| \mathsf{vote\_round\_id} \| \mathsf{validator\_index})$.
 
 ### Confirmation
 
@@ -166,30 +280,41 @@ The ceremony confirms under one of the following conditions:
 On successful confirmation, the round transitions from **PENDING** to
 **ACTIVE**.
 
-## Tally Decryption
+### Validator Set Changes
+
+**Joining**: when a new validator registers a Pallas public key after the
+ceremony, any existing ACK'd validator MAY encrypt $\mathsf{ea\_sk}$ to
+the new validator's key using [ECIES on Pallas] and publish it to the
+chain. The new validator decrypts, verifies, and ACKs.
+
+**Leaving**: a departing validator retains $\mathsf{ea\_sk}$ and cannot be
+forced to delete it. Under the current trust model this is acceptable —
+compromise only affects vote-amount privacy, not voter identity. Key
+rotation (generating a fresh $\mathsf{ea\_sk'}$ for future rounds) limits
+exposure. See [Security Considerations] for the TSS upgrade path that
+cryptographically excludes departed validators.
+
+## Tally
 
 After the voting window closes and the round transitions to **TALLYING**:
 
-1. The block proposer loads $\mathsf{ea\_sk}$ and decrypts the aggregate
-   ciphertext for each (proposal, decision) pair:
+1. For each (proposal, decision) pair, the aggregate ciphertext
+   $(C_{1,\text{agg}}, C_{2,\text{agg}})$ is the component-wise sum of all
+   submitted share ciphertexts. This aggregation is publicly verifiable —
+   anyone can replay the addition from on-chain data.
 
-   $$
-   \mathsf{total\_value} \cdot G = C_{2,\text{agg}} - \mathsf{ea\_sk} \cdot C_{1,\text{agg}}
-   $$
+2. Any validator holding $\mathsf{ea\_sk}$ decrypts the aggregate per
+   [Decryption] and recovers $\mathsf{total\_value}$ via baby-step-giant-step.
 
-2. The proposer recovers $\mathsf{total\_value}$ from
-   $\mathsf{total\_value} \cdot G$ using baby-step-giant-step discrete
-   logarithm (feasible because $\mathsf{total\_value}$ is bounded by total
-   ZEC supply).
+3. The decryptor publishes $\mathsf{total\_value}$ for each
+   (proposal, decision) pair along with the DLEQ proof per
+   [Chaum-Pedersen DLEQ Proof].
 
-3. The proposer publishes the recovered values and a Chaum-Pedersen
-   DLEQ proof [^cp92] demonstrating correct decryption.
+4. Any party MAY verify the proof against the on-chain aggregate
+   ciphertexts and $\mathsf{ea\_pk}$.
 
-### DLEQ Verification
-
-Any party MAY independently verify the tally by checking the DLEQ proof
-against $\mathsf{ea\_pk}$, the aggregate ciphertexts, and the claimed
-totals. No trust in the EA or validators is required.
+Individual vote amounts are never revealed — only the aggregate total per
+(proposal, decision).
 
 ## Key Retention
 
@@ -279,3 +404,5 @@ circuits.
 [^cp92]: [D. Chaum and T. P. Pedersen, "Wallet Databases with Observers", in Advances in Cryptology — CRYPTO '92, pp. 89-105, 1993](https://doi.org/10.1007/3-540-48071-4_7)
 
 [^ecies]: [V. Shoup, "A Proposal for an ISO Standard for Public Key Encryption", version 2.1, 2001](https://www.shoup.net/papers/iso-2_1.pdf)
+
+[^protocol-pallasandvesta]: [Zcash Protocol Specification, Version 2025.6.3 [NU6.1]. Section 5.4.9.6: Pallas and Vesta](protocol/protocol.pdf#pallasandvesta)
