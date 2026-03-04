@@ -438,28 +438,6 @@ provides authenticated encryption.
 jailing (excluding from future ceremonies) rather than token slashing.
 This is a liveness signal, not a safety violation.
 
-
-# Security Considerations
-
-**Trust model**: the dealer generates and momentarily holds
-$\mathsf{ea\_sk}$ before distributing shares and erasing the secret.
-This is the primary trust assumption. Individual validators hold only
-Shamir shares — an adversary needs at least $t$ shares to reconstruct
-the key and decrypt individual vote shares. Voter identity remains
-protected because alternate nullifiers are unlinkable to on-chain
-spending.
-
-**Key isolation**: each round uses a different $\mathsf{ea\_sk}$ and
-shares. A validator compromised after one round cannot decrypt votes in
-subsequent rounds.
-
-**Trusted dealer limitation**: the dealer knows $\mathsf{ea\_sk}$ during
-key generation, giving it the ability to decrypt all vote shares for
-that round before erasing the key. The dealer is automatically rotated
-via block proposer selection, limiting the window of exposure. See
-[Rationale] for the DKG upgrade path that would eliminate this
-assumption.
-
 **Post-quantum**: El Gamal encryption is breakable by a quantum adversary
 with a sufficiently large quantum computer. A successful attack would
 expose individual vote share amounts for the affected round. Post-quantum
