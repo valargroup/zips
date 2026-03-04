@@ -194,21 +194,32 @@ generate $\mathsf{ea\_pk}$ was used to decrypt the aggregate. The proof
 establishes:
 
 $$
-\log_G(\mathsf{ea\_pk}) = \log_{C_{1,\text{agg}}}(\mathsf{ea\_pk} \cdot C_{1,\text{agg}}^{-1} \cdot \ldots)
+\log_G(\mathsf{ea\_pk}) = \log_{C_{1,\text{agg}}}(D)
 $$
 
-Concretely, the prover demonstrates knowledge of $\mathsf{ea\_sk}$ such
-that $\mathsf{ea\_pk} = \mathsf{ea\_sk} \cdot G$ and
-$D = \mathsf{ea\_sk} \cdot C_{1,\text{agg}}$ where
-$D = C_{2,\text{agg}} - \mathsf{total\_value} \cdot G$. The proof is:
+where $D = \mathsf{ea\_sk} \cdot C_{1,\text{agg}}$ and
+$D = C_{2,\text{agg}} - \mathsf{total\_value} \cdot G$.
+
+The proof protocol is:
 
 1. Prover samples $k \leftarrow \mathbb{F}_{q_{\mathbb{P}}}$ and computes
    $R_1 = k \cdot G$ and $R_2 = k \cdot C_{1,\text{agg}}$.
-2. Challenge: $c = \mathsf{H}(G \| \mathsf{ea\_pk} \| C_{1,\text{agg}} \| D \| R_1 \| R_2)$
-   where $\mathsf{H}$ is a hash-to-scalar function.
-3. Response: $s = k - c \cdot \mathsf{ea\_sk}$.
-4. Verifier checks: $s \cdot G + c \cdot \mathsf{ea\_pk} = R_1$ and
-   $s \cdot C_{1,\text{agg}} + c \cdot D = R_2$.
+2. Fiat-Shamir challenge:
+   $c = \mathsf{H2S}(\mathsf{BLAKE2b\text{-}256}(\texttt{"zally-dleq-v1"} \| \mathsf{compress}(G) \| \mathsf{compress}(\mathsf{ea\_pk}) \| \mathsf{compress}(C_{1,\text{agg}}) \| \mathsf{compress}(D) \| \mathsf{compress}(R_1) \| \mathsf{compress}(R_2)))$
+   where $\mathsf{compress}$ is the 32-byte compressed Pallas point
+   encoding and $\mathsf{H2S}$ converts the 32-byte digest to a Pallas
+   scalar.
+3. Response: $z = k + c \cdot \mathsf{ea\_sk}$.
+4. The proof is serialized as $(c, z)$, each a 32-byte Pallas scalar
+   (64 bytes total).
+
+Verification:
+
+1. Compute $R_1 = z \cdot G - c \cdot \mathsf{ea\_pk}$ and
+   $R_2 = z \cdot C_{1,\text{agg}} - c \cdot D$.
+2. Recompute $c'$ from $G$, $\mathsf{ea\_pk}$, $C_{1,\text{agg}}$, $D$,
+   $R_1$, $R_2$ using the same hash as above.
+3. Accept if $c = c'$.
 
 Any party MAY independently verify the tally using only the on-chain data
 ($\mathsf{ea\_pk}$, aggregate ciphertexts, claimed totals, and the proof).
