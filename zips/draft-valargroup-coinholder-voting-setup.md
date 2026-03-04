@@ -295,13 +295,18 @@ the following parameters:
 - `verification_keys`: verification keys for the ZKP circuits (delegation,
   vote, share reveal).
 
-The vote round ID is computed as:
+The vote round ID is computed as a Poseidon hash over 8 Pallas base
+field elements:
 
 $$
-\mathsf{vote\_round\_id} = \mathsf{Blake2b}(\mathsf{snapshot\_height} \| \mathsf{snapshot\_blockhash} \| \mathsf{proposals\_hash} \| \mathsf{vote\_end\_time} \| \mathsf{nullifier\_imt\_root} \| \mathsf{nc\_root})
+\mathsf{vote\_round\_id} = \mathsf{Poseidon}(\mathsf{snapshot\_height},\; \mathsf{blockhash\_lo},\; \mathsf{blockhash\_hi},\; \mathsf{proposals\_hash\_lo},\; \mathsf{proposals\_hash\_hi},\; \mathsf{vote\_end\_time},\; \mathsf{nullifier\_imt\_root},\; \mathsf{nc\_root})
 $$
 
-where Blake2b [^blake2] is used with a 256-bit output.
+where 32-byte inputs ($\mathsf{snapshot\_blockhash}$,
+$\mathsf{proposals\_hash}$) are split into two 128-bit halves and
+each half is embedded as a Pallas base field element ($\mathbb{F}_p$).
+Poseidon is used because the vote round ID enters ZKP circuits as a
+public input, requiring it to be a valid field element.
 
 The round enters the **PENDING** state. The EA key ceremony
 (see [^draft-ceremony]) runs automatically. On successful completion, the
@@ -374,5 +379,3 @@ circuits.
 [^draft-pir]: [Draft ZIP: Private Information Retrieval for Nullifier Exclusion Proofs](draft-valargroup-gov-pir.md)
 
 [^draft-onchain-voting]: [Draft ZIP: On-chain Accountable Voting](draft-ecc-onchain-accountable-voting.md)
-
-[^blake2]: [J.-P. Aumasson, S. Neves, Z. Wilcox-O'Hearn, and C. Winnerlein, "BLAKE2: simpler, smaller, fast as MD5", in Applied Cryptography and Network Security, pp. 119-135, 2013](https://doi.org/10.1007/978-3-642-38980-1_8)
