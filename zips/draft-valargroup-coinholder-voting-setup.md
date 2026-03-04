@@ -202,7 +202,7 @@ Initialize the chain:
     zallyd init <moniker> --chain-id zvote-1
 
 This generates a Pallas keypair for the EA ceremony and configures the
-REST API on port 1318.
+REST API on port 1317.
 
 Network ports:
 
@@ -210,7 +210,7 @@ Network ports:
 | ----- | -------- | -------- | -------------------- |
 | 26656 | P2P      | Public   | Peer-to-peer gossip  |
 | 26657 | RPC      | Local    | CometBFT RPC         |
-| 1318  | REST     | Public   | Application REST API |
+| 1317  | REST     | Public   | Application REST API |
 
 Start the chain and verify that block production begins:
 
@@ -253,13 +253,13 @@ mechanics.
 
 ### Service Discovery
 
-An Edge Config registry (hosted on Vercel) stores:
+A configuration API (currently hosted on Vercel) stores:
 
 - Validator P2P addresses and REST API URLs.
 - PIR server URLs.
 
 Wallet clients and the `join.sh` script discover the network through this
-registry.
+API.
 
 ## Conducting a Voting Round
 
@@ -286,8 +286,9 @@ the following parameters:
 
 - `snapshot_height`: the selected Zcash mainnet block height.
 - `snapshot_blockhash`: the block hash at `snapshot_height`.
-- `proposals`: 1 to 16 proposals, each with 2 to 8 labeled options (e.g.,
-  "Support" / "Oppose").
+- `proposals`: 1 to 15 proposals, each with 2 to 8 labeled options (e.g.,
+  "Support" / "Oppose"). The limit is 15 because the circuit's
+  proposal authority bitmask reserves bit 0 as a sentinel.
 - `vote_end_time`: deadline for all voting phases.
 - `nullifier_imt_root`: root of the nullifier non-membership tree at
   snapshot.
@@ -319,7 +320,7 @@ round transitions to **ACTIVE** and the voting window opens.
    vote, and submit shares (see [^draft-voting-protocol]).
 3. **TALLYING**: `vote_end_time` has passed. Tally decryption runs
    automatically (see [^draft-ceremony]).
-4. **COMPLETE**: tally published and verifiable.
+4. **FINALIZED**: tally published and verifiable.
 
 ### Timing Parameters
 
