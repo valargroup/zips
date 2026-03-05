@@ -77,11 +77,10 @@ acknowledge their shares; the ceremony confirms when a majority of
 eligible validators have acknowledged.
 
 After the voting window closes, at least $t$ validators submit partial
-decryptions that are combined via Lagrange interpolation to recover the
-aggregate plaintext. A Chaum-Pedersen DLEQ proof published alongside
-the tally allows any party to verify correct decryption against the
-on-chain aggregate ciphertexts and the EA public key, without trusting
-the Election Authority or any individual validator.
+decryptions that are combined via Lagrange interpolation on-chain to
+recover the aggregate plaintext. Any party can verify correct decryption
+by re-deriving the Lagrange combination from the stored partial
+decryptions.
 
 
 # Motivation
@@ -157,7 +156,7 @@ the Pallas curve. The EA keypair is:
 - $\mathsf{ea\_pk} = \mathsf{ea\_sk} \cdot G$: the corresponding public
   key.
 
-All El Gamal, ECIES, and DLEQ operations in this ZIP MUST use this
+All El Gamal and ECIES operations in this ZIP MUST use this
 generator. Using an arbitrary point would break the homomorphic property
 and compatibility with the voting circuit.
 
@@ -202,44 +201,6 @@ because $\mathsf{total\_value}$ is bounded by total ZEC supply
 (approximately $2.1 \times 10^{15}$ zatoshi, or $1.68 \times 10^{8}$
 ballots).
 
-### Chaum-Pedersen DLEQ Proof
-
-After decryption, the decryptor MUST publish a Chaum-Pedersen DLEQ
-proof [^cp92] demonstrating that the same $\mathsf{ea\_sk}$ used to
-generate $\mathsf{ea\_pk}$ was used to decrypt the aggregate. The proof
-establishes:
-
-$$
-\log_G(\mathsf{ea\_pk}) = \log_{C_{1,\text{agg}}}(D)
-$$
-
-where $D = \mathsf{ea\_sk} \cdot C_{1,\text{agg}}$ and
-$D = C_{2,\text{agg}} - \mathsf{total\_value} \cdot G$.
-
-The proof protocol is:
-
-1. Prover samples $k \leftarrow \mathbb{F}_q$ and computes
-   $R_1 = k \cdot G$ and $R_2 = k \cdot C_{1,\text{agg}}$.
-2. Fiat-Shamir challenge:
-   $c = \mathsf{H2S}(\mathsf{BLAKE2b\text{-}256}(\texttt{"zally-dleq-v1"} \| \mathsf{compress}(G) \| \mathsf{compress}(\mathsf{ea\_pk}) \| \mathsf{compress}(C_{1,\text{agg}}) \| \mathsf{compress}(D) \| \mathsf{compress}(R_1) \| \mathsf{compress}(R_2)))$
-   where $\mathsf{compress}$ is the 32-byte compressed Pallas point
-   encoding and $\mathsf{H2S}$ converts the 32-byte digest to a Pallas
-   scalar.
-3. Response: $z = k + c \cdot \mathsf{ea\_sk}$.
-4. The proof is serialized as $(c, z)$, each a 32-byte Pallas scalar
-   (64 bytes total).
-
-Verification:
-
-1. Compute $R_1 = z \cdot G - c \cdot \mathsf{ea\_pk}$ and
-   $R_2 = z \cdot C_{1,\text{agg}} - c \cdot D$.
-2. Recompute $c'$ from $G$, $\mathsf{ea\_pk}$, $C_{1,\text{agg}}$, $D$,
-   $R_1$, $R_2$ using the same hash as above.
-3. Accept if $c = c'$.
-
-Any party MAY independently verify the tally using only the on-chain data
-($\mathsf{ea\_pk}$, aggregate ciphertexts, claimed totals, and the proof).
-No trust in the EA or validators is required.
 
 ## ECIES on Pallas
 
@@ -407,14 +368,13 @@ After the voting window closes and the round transitions to **TALLYING**:
 
    $\mathsf{total\_value}$ is recovered via baby-step-giant-step.
 
-5. Any set of $t$ validators MAY cooperate to reconstruct
-   $\mathsf{ea\_sk}$ from their shares and produce the DLEQ proof per
-   [Chaum-Pedersen DLEQ Proof]. The decryptor publishes
-   $\mathsf{total\_value}$ for each (proposal, decision) pair along
-   with the proof.
+5. The on-chain tally handler Lagrange-combines the partial decryptions
+   and publishes $\mathsf{total\_value}$ for each (proposal, decision)
+   pair.
 
-6. Any party MAY verify the proof against the on-chain aggregate
-   ciphertexts and $\mathsf{ea\_pk}$.
+6. Any party MAY verify tally correctness by re-deriving the Lagrange
+   combination from the stored partial decryptions and confirming the
+   decrypted result.
 
 Individual vote amounts are never revealed — only the aggregate total per
 (proposal, decision).
@@ -489,8 +449,6 @@ Halo 2 zero-knowledge proof circuits.
 [^draft-voting-protocol]: [Draft ZIP: Zcash Shielded Voting Protocol](draft-valargroup-voting-protocol.md)
 
 [^elgamal]: [T. ElGamal, "A public key cryptosystem and a signature scheme based on discrete logarithms", IEEE Transactions on Information Theory, vol. 31, no. 4, pp. 469-472, 1985](https://doi.org/10.1109/TIT.1985.1057074)
-
-[^cp92]: [D. Chaum and T. P. Pedersen, "Wallet Databases with Observers", in Advances in Cryptology — CRYPTO '92, pp. 89-105, 1993](https://doi.org/10.1007/3-540-48071-4_7)
 
 [^ecies]: [V. Shoup, "A Proposal for an ISO Standard for Public Key Encryption", version 2.1, 2001](https://www.shoup.net/papers/iso-2_1.pdf)
 

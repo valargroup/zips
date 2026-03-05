@@ -80,9 +80,10 @@ A separate nullifier service provides private information retrieval of
 exclusion proofs so voters can prove note non-spending without revealing
 which notes they hold.
 
-Tally correctness is independently verifiable by any party: a DLEQ proof
-in the tally submission allows anyone with access to the chain state to
-confirm correct decryption without trusting the Election Authority or
+Tally correctness is independently verifiable: validators submit partial
+decryptions which are Lagrange-combined on-chain. Any party with access
+to the chain state can re-derive the combination from the stored
+partials and confirm correct decryption without trusting individual
 validators.
 
 The EA key ceremony protocol is specified in [^draft-ceremony]. The
@@ -392,12 +393,13 @@ round:
   double-spending.
 - Recompute the aggregate El Gamal ciphertexts per (proposal, decision)
   from individual share reveals.
-- Verify the DLEQ proof in `MsgSubmitTally` to confirm correct decryption
+- Verify tally correctness by re-deriving the Lagrange combination of
+  stored partial decryptions and confirming the decrypted result
   (see [^draft-ceremony]).
 
-No trust in the Election Authority or validators is required for tally
-verification: the DLEQ proof is independently checkable by any party with
-access to the chain state.
+No trust in individual validators is required for tally verification:
+the partial decryptions are stored on-chain and the combination is
+independently reproducible by any party.
 
 
 # Rationale
