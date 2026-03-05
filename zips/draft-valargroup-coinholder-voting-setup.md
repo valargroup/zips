@@ -233,7 +233,7 @@ so that joining validators and wallet clients can find the network.
 New validators join through `join.sh` [^join-sh], a self-contained
 script that requires no local clone of the repository. The script:
 
-1. Downloads pre-built `zallyd` and `create-val-tx` binaries and
+1. Downloads pre-built `shieldedvoted` and `create-val-tx` binaries and
    verifies their SHA-256 checksums.
 2. Discovers a live validator via the service discovery API.
 3. Fetches genesis and syncs to the current height.
