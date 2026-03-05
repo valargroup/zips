@@ -201,7 +201,7 @@ Assignment rules:
 - **Bootstrap phase**: any bonded validator MAY claim the vote manager
   role.
 - **Subsequent rounds**: the current vote manager retains the role, or any
-  bonded validator MAY reassign it.
+  bonded validator and the current vote manager MAY reassign it.
 
 ### Validator
 
