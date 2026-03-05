@@ -165,6 +165,22 @@ The vote chain verifies a zero-knowledge proof for each transaction type:
 delegation, vote, and share reveal. The proof circuits are specified in
 [^draft-voting-protocol].
 
+## Deployment Architecture
+
+A complete deployment consists of:
+
+- **Vote chain nodes** — one or more `zallyd` instances running CometBFT
+  consensus. Each node embeds a helper server that processes queued vote
+  shares and submits share reveal transactions at randomized intervals
+  (see [^draft-voting-protocol]).
+- **Nullifier service** — a PIR server that provides private nullifier
+  exclusion proofs to voters (see [Nullifier Service (PIR Server)]).
+- **Service discovery API** — a centralized bootstrap directory that
+  wallet clients and joining validators query to discover vote chain and
+  PIR server endpoints (see [Service Discovery]).
+- **Admin interface** — a management UI for approving pending validator
+  registrations and configuring service discovery endpoints.
+
 ## Roles
 
 ### Bootstrap Operator
@@ -274,12 +290,26 @@ The service pipeline:
 
 ### Service Discovery
 
-Validator and PIR server URLs are published to a Vercel Edge Config store,
-managed through the admin UI. Wallet clients and the `join.sh` script
-query this API to discover:
+The service discovery API is a centralized bootstrap directory that
+serves as the entry point for both validator onboarding and wallet
+client integration. It exposes a `/api/voting-config` endpoint that
+returns:
 
-- Vote chain REST API endpoints.
-- PIR server endpoints.
+- **Vote chain endpoints** — REST API URLs for active validators.
+- **PIR server endpoints** — URLs for nullifier exclusion proof queries.
+
+Joining validators query this API to discover a seed node, fetch its
+CometBFT P2P identity and genesis, and connect. Once connected,
+CometBFT's peer exchange (PEX) protocol handles discovery of
+additional peers — the API is only needed for initial bootstrap.
+
+Wallet clients (e.g. Zodl) query the same API to discover vote chain
+and PIR server endpoints for voter-facing operations.
+
+New validators register themselves with the API after joining. The
+bootstrap operator approves pending registrations through an admin
+interface, after which the validator appears in the published
+endpoint list.
 
 ## Conducting a Voting Round
 
