@@ -83,8 +83,7 @@ which notes they hold.
 Tally correctness is independently verifiable: validators submit partial
 decryptions which are Lagrange-combined on-chain. Any party with access
 to the chain state can re-derive the combination from the stored
-partials and confirm correct decryption without trusting individual
-validators.
+partials and confirm the decrypted result.
 
 The EA key ceremony protocol is specified in [^draft-ceremony]. The
 voter-facing protocol (delegation, vote casting, share reveal) is
@@ -397,9 +396,9 @@ round:
   stored partial decryptions and confirming the decrypted result
   (see [^draft-ceremony]).
 
-No trust in individual validators is required for tally verification:
-the partial decryptions are stored on-chain and the combination is
-independently reproducible by any party.
+Because the partial decryptions are stored on-chain, any party can
+re-derive the Lagrange combination and check the final tally without
+relying on a single validator's output.
 
 
 # Rationale
