@@ -85,10 +85,6 @@ decryptions which are Lagrange-combined on-chain. Any party with access
 to the chain state can re-derive the combination from the stored
 partials and confirm the decrypted result.
 
-The EA key ceremony protocol is specified in [^draft-ceremony]. The
-voter-facing protocol (delegation, vote casting, share reveal) is
-specified in [^draft-voting-protocol].
-
 
 # Motivation
 
