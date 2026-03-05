@@ -382,10 +382,11 @@ transaction types). Zcash mainnet's transaction throughput and scripting model
 are not designed for interactive multi-phase voting protocols.
 
 **Cosmos SDK**: provides a mature BFT consensus engine (CometBFT),
-staking and slashing modules, and a transaction pipeline that can be
-extended with custom message types and ante handlers for ZKP verification.
-The alternative — building a chain from scratch — would duplicate
-well-tested consensus infrastructure.
+validator lifecycle management (bonding, jailing for missed blocks or
+missed ceremony acknowledgements, consensus power distribution), and a
+transaction pipeline that can be extended with custom message types and
+ante handlers for ZKP verification. The alternative — building a chain
+from scratch — would duplicate well-tested consensus infrastructure.
 
 **Poseidon for vote round ID**: the vote round ID enters ZKP circuits as
 a public input, so it must be a valid field element. Poseidon is
