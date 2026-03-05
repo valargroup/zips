@@ -313,7 +313,6 @@ The poll runner selects a Zcash mainnet snapshot height subject to these
 constraints:
 
 - The height MUST be at or after NU5 activation (Orchard is required).
-- The height MUST be a multiple of 10.
 
 Selecting the snapshot triggers:
 
