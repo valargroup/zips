@@ -219,9 +219,7 @@ script or by building from source. See [Onboarding Validators].
 
 The bootstrap operator builds the vote chain binary (Go + Rust FFI for
 Halo 2 and RedPallas verification), initializes a single-validator chain,
-and starts the node. The reference implementation repository [^ref-impl]
-contains step-by-step instructions (`SETUP_GENESIS.md`) and mise task
-automation.
+and starts the node.
 
 Initialization generates a Cosmos validator key, a Pallas keypair for the
 EA ceremony, and a genesis block with the chain ID `zvote-1`. The node
@@ -240,8 +238,7 @@ so that joining validators and wallet clients can find the network.
 ### Onboarding Validators
 
 New validators join through `join.sh` [^join-sh], a self-contained
-script that requires no local clone of the repository. See
-`SETUP_JOIN.md` in [^ref-impl] for full details. The script:
+script that requires no local clone of the repository. The script:
 
 1. Downloads pre-built `zallyd` and `create-val-tx` binaries and
    verifies their SHA-256 checksums.
@@ -263,8 +260,7 @@ same `join.sh` flow.
 ### Nullifier Service (PIR Server)
 
 The nullifier service provides nullifier exclusion proofs to voters via
-PIR. See `SETUP_NULLIFIER_SERVICE.md` in [^ref-impl] for operational
-setup.
+PIR.
 
 The service pipeline:
 
@@ -403,12 +399,6 @@ network to grow without requiring validators to build from source or
 understand Cosmos SDK tooling.
 
 
-# Reference implementation
-
-[^ref-impl] — a Go and Rust implementation built on Cosmos SDK with
-Halo 2 zero-knowledge proof circuits.
-
-
 # References
 
 [^BCP14]: [Information on BCP 14 — "RFC 2119: Key words for use in RFCs to Indicate Requirement Levels" and "RFC 8174: Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words"](https://www.rfc-editor.org/info/bcp14)
@@ -425,6 +415,4 @@ Halo 2 zero-knowledge proof circuits.
 
 [^draft-onchain-voting]: [Draft ZIP: On-chain Accountable Voting](draft-ecc-onchain-accountable-voting.md)
 
-[^join-sh]: [join.sh — validator join script](https://gist.github.com/greg0x/71bec808fbd02a7ef2a29b4386b8d842) (also distributed via [DigitalOcean Spaces](https://vote.fra1.digitaloceanspaces.com/join.sh) on each release)
-
-[^ref-impl]: [z-cale/zally: Zcash Shielded Voting reference implementation](https://github.com/z-cale/zally)
+[^join-sh]: [join.sh — validator join script](https://gist.github.com/greg0x/71bec808fbd02a7ef2a29b4386b8d842)
