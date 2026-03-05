@@ -167,7 +167,7 @@ delegation, vote, and share reveal. The proof circuits are specified in
 
 A complete deployment consists of:
 
-- **Vote chain nodes** — one or more `zallyd` instances running CometBFT
+- **Vote chain nodes** — one or more `shieldedvoted` instances running CometBFT
   consensus. Each node embeds a helper server that processes queued vote
   shares and submits share reveal transactions at randomized intervals
   (see [^draft-voting-protocol]).
