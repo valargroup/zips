@@ -198,8 +198,8 @@ maintains three keypairs:
 - **Account keypair**: used for submitting chain transactions.
 - **Pallas keypair**: used for ECIES key exchange during the EA ceremony.
 
-Validators join the network via the automated `join.sh` script or by
-building from source. See [Onboarding Validators].
+Validators join the network via the automated `join.sh` [^join-sh]
+script or by building from source. See [Onboarding Validators].
 
 ### Role Summary
 
@@ -239,9 +239,9 @@ so that joining validators and wallet clients can find the network.
 
 ### Onboarding Validators
 
-New validators join through `join.sh`, a self-contained script that
-requires no local clone of the repository. See `SETUP_JOIN.md` in
-[^ref-impl] for full details. The script:
+New validators join through `join.sh` [^join-sh], a self-contained
+script that requires no local clone of the repository. See
+`SETUP_JOIN.md` in [^ref-impl] for full details. The script:
 
 1. Downloads pre-built `zallyd` and `create-val-tx` binaries and
    verifies their SHA-256 checksums.
@@ -425,5 +425,7 @@ Halo 2 zero-knowledge proof circuits.
 [^draft-pir]: [Draft ZIP: Private Information Retrieval for Nullifier Exclusion Proofs](draft-valargroup-gov-pir.md)
 
 [^draft-onchain-voting]: [Draft ZIP: On-chain Accountable Voting](draft-ecc-onchain-accountable-voting.md)
+
+[^join-sh]: [join.sh — validator join script](https://gist.github.com/greg0x/71bec808fbd02a7ef2a29b4386b8d842) (also distributed via [DigitalOcean Spaces](https://vote.fra1.digitaloceanspaces.com/join.sh) on each release)
 
 [^ref-impl]: [z-cale/zally: Zcash Shielded Voting reference implementation](https://github.com/z-cale/zally)
