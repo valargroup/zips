@@ -344,18 +344,10 @@ the following parameters:
 - `verification_keys`: verification keys for the ZKP circuits (delegation,
   vote, share reveal).
 
-The vote round ID is computed as a Poseidon hash over 8 Pallas base
-field elements:
-
-$$
-\mathsf{vote\_round\_id} = \mathsf{Poseidon}(\mathsf{snapshot\_height},\; \mathsf{blockhash\_lo},\; \mathsf{blockhash\_hi},\; \mathsf{proposals\_hash\_lo},\; \mathsf{proposals\_hash\_hi},\; \mathsf{vote\_end\_time},\; \mathsf{nullifier\_imt\_root},\; \mathsf{nc\_root})
-$$
-
-where 32-byte inputs ($\mathsf{snapshot\_blockhash}$,
-$\mathsf{proposals\_hash}$) are split into two 128-bit halves and
-each half is embedded as a Pallas base field element ($\mathbb{F}_p$).
-Poseidon is used because the vote round ID enters ZKP circuits as a
-public input, requiring it to be a valid field element.
+The vote round ID is a Poseidon hash of the round parameters
+(snapshot height, block hash, proposals, end time, nullifier IMT root,
+note commitment root). It is a Pallas field element because it enters
+ZKP circuits as a public input.
 
 The round enters the **PENDING** state. The EA key ceremony
 (see [^draft-ceremony]) runs automatically. On successful completion, the
