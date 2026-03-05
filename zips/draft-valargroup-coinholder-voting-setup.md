@@ -238,13 +238,7 @@ and starts the node.
 
 Initialization generates a Cosmos validator key, a Pallas keypair for the
 EA ceremony, and a genesis block with the chain ID `zvote-1`. The node
-exposes:
-
-| Port  | Protocol | Exposure | Purpose              |
-| ----- | -------- | -------- | -------------------- |
-| 26656 | P2P      | Public   | Peer-to-peer gossip  |
-| 26657 | RPC      | Local    | CometBFT RPC         |
-| 1318  | REST     | Public   | Application REST API |
+exposes the standard CometBFT P2P, RPC, and Cosmos SDK REST endpoints.
 
 After the chain is producing blocks, the bootstrap operator registers the
 node's public URL in the service discovery layer (see [Service Discovery])
