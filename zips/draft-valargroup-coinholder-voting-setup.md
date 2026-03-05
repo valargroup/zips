@@ -193,7 +193,7 @@ set is funded, the bootstrap operator role ceases to exist.
 ### Vote Manager
 
 The vote manager creates voting rounds by submitting
-`MsgCreateVotingSession` transactions. Only the vote manager role can
+transactions with a `MsgCreateVotingSession`. Only the vote manager role can
 publish new rounds.
 
 Assignment rules:
