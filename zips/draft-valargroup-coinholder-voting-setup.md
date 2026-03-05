@@ -88,22 +88,10 @@ partials and confirm the decrypted result.
 
 # Motivation
 
-Zcash coinholders need a way to make collective decisions — from fund
-disbursement to protocol governance — while preserving the privacy
-guarantees they expect from shielded transactions. Conducting such votes
-requires dedicated infrastructure: a vote chain, validators, snapshot
-configuration, and round management.
-
-ZIP 1016 [^zip-1016] is the initial use case, requiring coinholder votes
-to approve grants from the Coinholder-Controlled Fund. The infrastructure
-specified here is general-purpose: any coinholder decision that can be
-framed as a set of proposals with labeled options can be conducted through
-this system.
-
-This ZIP specifies the operational concerns — what to build, how to
-configure it, and how to run a voting round — separately from the
-cryptographic protocols and voter-facing interactions specified in
-companion ZIPs.
+The Zcash Shielded Voting Protocol [^draft-voting-protocol] defines a
+cryptographic protocol for private coinholder voting. This ZIP specifies
+the deployment infrastructure required to run that protocol: the vote
+chain, operator roles, and voting round lifecycle.
 
 
 # Privacy Implications
