@@ -1803,6 +1803,21 @@ OnionPIR [^YPIR], and is standard for lattice-based schemes employing
 automorphism-based key switching. No attack is known that exploits
 this KDM structure for the parameter sizes used in this ZIP.
 
+Under standard RLWE (ignoring the KDM plaintext), Instance B's 33
+samples are far too few for any known lattice attack — the estimator
+reports infinite cost. Even if the KDM structure effectively
+increased the adversary's usable sample count, the resulting security
+cannot fall below that of the selector LWE instance (Instance A),
+which shares the same $(n, q, \sigma)$ and already provides the
+adversary with up to 262,144 samples. The hardness estimates in
+[Hardness Estimates] show that security is essentially flat once
+$m \geq n$: Tier 1 ($m = 2\,048$) gives 132.8 bits under MATZOV and
+Tier 2 ($m = 262\,144$) gives 132.6 bits. Therefore, even under the
+most pessimistic interpretation of circular security, that it gives
+the adversary unbounded additional samples, the packing-key instance
+cannot be the weakest link and does not reduce security below the
+125-bit target.
+
 ### Instance Summary
 
 | Instance | Type | $n$ / $d$ | $\log_2 q$ | Stddev | Samples | Public-matrix constraint |
