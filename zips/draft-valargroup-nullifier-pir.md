@@ -200,8 +200,6 @@ The following are explicitly out of scope for this ZIP:
   impose a latency floor determined by network conditions.
 - Retrieval of data other than nullifier exclusion proofs.
 - PIR transport-level wire format between client and server.
-- Noise analysis. Refer to YPIR paper for noise and security analysis. We directly use the suggested values with no amendments [^YPIR]. (TODO: Bring this
-  into the ZIP. WIP section # noise-analysis)
 - The outer transport and wire-level encoding of queries and responses is out of scope for this ZIP.
 
 
@@ -2181,10 +2179,16 @@ would produce at most $2^{21} \approx 2$ million Tier 2 rows. At the
 current row size this yields approximately 48 GB, still within the
 64 GB bound.
 
-The YPIR authors provide a concrete security analysis for the parameter
-family underlying these choices in [^YPIR], targeting at least 128-bit
-computational security with correctness error at most $2^{-40}$. The shared-modulus YPIR+SP
-constants above are taken from the referenced implementation used by this ZIP.
+The YPIR paper [^YPIR] targets 128-bit computational security with
+correctness error at most $2^{-40}$ for this parameter family. The
+independent analysis in [Noise Analysis] confirms these claims: under
+the MATZOV cost model the binding LWE instance achieves 132.6-bit
+security (see [Hardness Estimates]), and the stage-by-stage noise
+budget yields a correctness error of $\leq 2^{-66}$ (see
+[Correctness Noise Budget]). The Kyber512 calibration in
+[Kyber512 Calibration] provides an additional cost-model-independent
+reference point. The shared-modulus YPIR+SP constants are taken from
+the referenced implementation used by this ZIP.
 
 ## Rationale for representing $q$ as two primes
 
