@@ -1691,6 +1691,127 @@ Tier 1 response MUST NOT be allowed to prevent the Tier 2 query from being
 sent. See [Rationale for Query Completion Requirement] for the attack
 that motivates this requirement.
 
+## Noise Analysis
+
+The YPIR+SP construction relies on three distinct cryptographic
+hardness instances. An adversary who breaks any one of them can
+compromise either query privacy (Instance A) or response integrity
+(Instances B and C). This section catalogs each instance; hardness
+estimates and the correctness noise budget are based on these
+parameters.
+
+In all instances, the discrete Gaussian width parameter is
+$\sigma = 6.4\sqrt{2\pi} \approx 16.03$, corresponding to standard
+deviation $6.4$. The secret and error distributions are identical
+(normal-form LWE/RLWE).
+
+### Selector LWE
+
+The deployed selector $c$ defined in [Regev Encryption] constitutes an
+LWE instance. An adversary who observes the public matrix $A$ and the
+selector vector $c$ obtains $m$ LWE samples of the form
+
+$$c[j] = \langle \mathbf{a}_j, \mathbf{s} \rangle + d^{-1} e_j + \Delta \cdot d^{-1} \cdot \mu_i[j] \pmod{q}$$
+
+for $j \in \{0, \ldots, m-1\}$, where $\mathbf{a}_j$ is column $j$ of
+$A^T$.
+
+| Parameter | Value |
+|---|---|
+| Dimension $n$ | $2048$ |
+| Modulus $q$ | $66\,974\,689\,739\,603\,969 \approx 2^{55.89}$ |
+| Secret distribution | Each entry of $\mathbf{s}$ from $D_{\mathbb{Z},\sigma}$ (stddev $6.4$) |
+| Error distribution | Each entry of $e$ from $D_{\mathbb{Z},\sigma}$ (stddev $6.4$) |
+| Samples $m$ | $2\,048$ (Tier 1) or $262\,144$ (Tier 2) |
+
+The Tier 2 instance provides the adversary with 262,144 samples and is
+the binding case for security analysis.
+
+The public matrix $A \in \mathbb{Z}_q^{n \times m}$ is not uniformly
+random. It is a horizontal concatenation of
+$B = \lceil m/d \rceil$ negacyclic matrices, each derived from an
+independent ring element in
+$R_q = \mathbb{Z}_q[X]/(X^{2048}+1)$ expanded from
+$\mathsf{seed\_A}$, as specified in
+[Negacyclic Extraction of the Deployed Selector Matrix]. For Tier 2,
+$B = 128$ independent ring elements determine the full
+$2048 \times 262\,144$ matrix. For the power-of-2 cyclotomic
+$X^{2048}+1$, the best known attacks against this structured
+(module-)LWE do not improve on attacks against unstructured LWE at the
+same dimension and modulus; see Peikert's survey [^Peikert2016] and
+Lyubashevsky–Peikert–Regev [^LPR2013].
+
+The selector secret $\mathbf{s}$ is the coefficient vector of the
+fresh RLWE secret $s^\star$ sampled in [Client Key Generation]. A
+fresh $s^\star$ is drawn for every query, so the adversary obtains at
+most $m$ samples from any single key. Across queries, the shared
+$\mathsf{seed\_A}$ yields the same $A$, but independent secrets
+prevent combining samples across queries.
+
+### Packing-key RLWE
+
+The packing key defined in [PackingKeyGeneration] consists of 33 RLWE
+ciphertexts $K_{r,u}$ for
+$r \in \{0, \ldots, 10\}$, $u \in \{0, 1, 2\}$, encrypted under the
+client's fresh secret $s^\star \in R_q$. Ignoring the key-dependent
+plaintext (addressed in [Circular Security] below), each ciphertext
+is a standard RLWE sample
+$(-\rho_{r,u},\; \rho_{r,u} \cdot s^\star + e_{r,u})$.
+
+| Parameter | Value |
+|---|---|
+| Ring degree $d$ | $2048$ |
+| Ring | $R_q = \mathbb{Z}_q[X]/(X^{2048}+1)$ |
+| Modulus $q$ | $\approx 2^{55.89}$ (same as selector) |
+| Secret distribution | Coefficients of $s^\star$ from $D_{\mathbb{Z},\sigma}$ (stddev $6.4$) |
+| Error distribution | $e_{r,u} \leftarrow D_{\mathbb{Z},\sigma}^d$ per ciphertext (stddev $6.4$) |
+| Samples | $33$ per query ($11$ automorphisms $\times$ $3$ gadget digits) |
+| Public elements | $\rho_{r,u} \in R_q$ pseudorandom from $\mathsf{seed\_pack}$ (ChaCha20) |
+
+Each query uses a fresh $s^\star$, so at most 33 RLWE samples are
+available from any single key. Across queries, the shared
+$\mathsf{seed\_pack}$ yields the same public elements $\rho_{r,u}$,
+but independent secrets prevent combining samples across queries.
+Because only 33 samples are available per key, this instance has
+substantially more security margin than the selector LWE instance.
+
+### Circular Security
+
+The packing-key ciphertexts encrypt key-dependent messages under
+$s^\star$. The plaintext of $K_{r,u}$ is
+
+$$B_\mathsf{ks}^u \cdot \tau_{k_r}(s^\star),$$
+
+where $B_\mathsf{ks} = 2^{19}$ is the gadget base from [Parameters]
+and $\tau_{k_r}$ is the ring automorphism
+$X \mapsto X^{k_r} \bmod (X^d + 1)$ for $k_r = d/2^r + 1$
+([PackingKeyGeneration]). The 33 encrypted functions are
+
+$$\bigl\{B_\mathsf{ks}^u \cdot \tau_{k_r}(s^\star) : r \in \{0, \ldots, 10\},\; u \in \{0, 1, 2\}\bigr\}.$$
+
+Each function is a ring automorphism (a fixed linear permutation of
+coefficients with sign changes) composed with scalar multiplication
+by a power of the gadget base. These are linear functions of
+$s^\star$ over $R_q$.
+
+This constitutes a key-dependent message (KDM) security assumption:
+the adversary sees RLWE encryptions of known linear functions of the
+secret key under that same key. This is strictly stronger than the
+standard RLWE assumption on which Instance B relies. The same
+circular-security assumption is required by Spiral and
+OnionPIR [^YPIR], and is standard for lattice-based schemes employing
+automorphism-based key switching. No attack is known that exploits
+this KDM structure for the parameter sizes used in this ZIP.
+
+### Instance Summary
+
+| Instance | Type | $n$ / $d$ | $\log_2 q$ | Stddev | Samples | Public-matrix constraint |
+|---|---|---|---|---|---|---|
+| A: Selector LWE (Tier 2, binding) | LWE | $2048$ | $55.9$ | $6.4$ | $262\,144$ | Negacyclic blocks ($128$ ring elements) |
+| A: Selector LWE (Tier 1) | LWE | $2048$ | $55.9$ | $6.4$ | $2\,048$ | Negacyclic block ($1$ ring element) |
+| B: Packing-key RLWE | RLWE | $2048$ | $55.9$ | $6.4$ | $33$ | Pseudorandom (ChaCha20 seed) |
+| C: Circular/KDM (packing key) | KDM-RLWE | $2048$ | $55.9$ | $6.4$ | $33$ | + encrypts $B_\mathsf{ks}^u \cdot \tau_{k_r}(s^\star)$ under $s^\star$ |
+
 
 # Rationale
 
@@ -1715,9 +1836,8 @@ current row size this yields approximately 48 GB, still within the
 
 The YPIR authors provide a concrete security analysis for the parameter
 family underlying these choices in [^YPIR], targeting at least 128-bit
-computational security with correctness error at most $2^{-40}$. The
-shared-modulus YPIR+SP constants above are taken from the referenced
-implementation used by this ZIP.
+computational security with correctness error at most $2^{-40}$. The shared-modulus YPIR+SP
+constants above are taken from the referenced implementation used by this ZIP.
 
 ## Rationale for representing $q$ as two primes
 
@@ -2188,6 +2308,12 @@ three-tier Poseidon tree, the Tier 1 / Tier 2 query orchestration described in t
 [^CDKS2020]: [Efficient Homomorphic Conversion Between Ring LWE Ciphertexts](https://eprint.iacr.org/2020/015). Hao Chen, Wei Dai, Miran Kim, and Yongsoo Song. Cryptology ePrint Archive 2020/015, December 2020. Also published in Applied Cryptography and Network Security, 2021.
 
 [^Regev2024]: [On Lattices, Learning with Errors, Random Linear Codes, and Cryptography](https://arxiv.org/abs/2401.03703). Oded Regev. arXiv:2401.03703v1 [cs.CR], January 2024. Updated and corrected version of a paper originally published under the same title [in STOC 2005](https://doi.org/10.1145/1568318.1568324).
+
+[^Albrecht2015]: [On the concrete hardness of Learning with Errors](https://doi.org/10.1515/jmc-2015-0016). Martin R. Albrecht, Rachel Player, and Sam Scott. Journal of Mathematical Cryptology 9(3):169–203, 2015.
+
+[^Peikert2016]: [A Decade of Lattice Cryptography](https://doi.org/10.1561/0400000074). Chris Peikert. Foundations and Trends in Theoretical Computer Science 10(4):283–424, 2016.
+
+[^LPR2013]: [On Ideal Lattices and Learning with Errors over Rings](https://doi.org/10.1007/s00145-012-9140-y). Vadim Lyubashevsky, Chris Peikert, and Oded Regev. Journal of the ACM 60(6):43:1–43:35, 2013.
 
 [^ChaCha20]: [ChaCha20 and Poly1305 for IETF Protocols (RFC 8439)](https://www.rfc-editor.org/rfc/rfc8439)
 
