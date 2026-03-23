@@ -1959,8 +1959,193 @@ The cost model ladder in [Cost Model Analysis] further shows that
 adding memory-access overhead (the $k = 2$ regime NIST considers most
 realistic) raises the PIR estimate to ~146 bits.
 
+### Correctness Noise Budget
+
+Decryption succeeds when the noise in every plaintext slot is less
+than $\Delta/2$ in absolute value, where
+$\Delta = \lfloor q/p \rfloor = 4\,087\,810\,653\,052 \approx 2^{41.9}$.
+This section tracks the per-slot noise variance through four stages
+and derives the correctness error probability.
+
+Throughout, the discrete Gaussian standard deviation is
+$s = 6.4$ (the width parameter $\sigma = 6.4\sqrt{2\pi}$ gives
+variance $s^2 = 40.96$).
+
+#### Regev Encryption Noise
+
+The deployed selector ([Regev Encryption]) is
+
+$$c[j] = (A^T \mathbf{s})[j] + d^{-1} e_j + \Delta \cdot d^{-1} \mu_i[j],$$
+
+where $e_j \sim D_{\mathbb{Z},\sigma}$ with $\text{Var}(e_j) = s^2 = 40.96$.
+
+The factor $d^{-1} \bmod q$ is restored during CDKS packing (see
+[Why A Is Negacyclic But the Database Is Not]), so the effective
+noise entering the noise budget is $e_j$ with variance $s^2$, not
+$d^{-1} e_j$.
+
+#### Database Scan Noise
+
+Per [Server Computation], the scan computes
+$b'_k = \sum_{j} \mathsf{DB}[j][k] \cdot c[j]$ for each
+plaintext-word column $k$. After $d^{-1}$ restoration, the effective
+scan noise per column is
+
+$$N_k = \sum_{j=0}^{m-1} \mathsf{DB}[j][k] \cdot e_j,$$
+
+with variance
+
+$$V_\text{scan} = s^2 \sum_{j=0}^{m-1} \mathsf{DB}[j][k]^2.$$
+
+For worst-case analysis (all 14-bit words maximal):
+
+$$V_\text{scan}^{\max} = m \cdot (2^{14} - 1)^2 \cdot s^2.$$
+
+For Tier 2 ($m = 262\,144$):
+$V_\text{scan}^{\max} \approx 2^{51.4}$,
+$\sigma_\text{scan} \approx 2^{25.7}$.
+
+#### CDKS Packing Noise (11 Levels)
+
+At each CDKS level $\ell$, the recursion
+$\mathsf{CDKS}_\ell = C^\text{sum}_\ell + \mathsf{AutoKS}_\ell(C^\text{diff}_\ell)$
+combines two independent sub-results. Monomial multiplication by
+$Y_\ell$ and the ring automorphism $\tau_{\kappa_\ell}$ permute
+coefficients without increasing noise magnitude. Key switching
+([PackingKeyGeneration]) adds fresh noise from
+$S = \sum_{u=0}^{L_\mathsf{ks}-1} K_u \cdot f^{(u)}$, where each
+$K_u$ has per-coefficient noise variance $s^2$ and each gadget-digit
+polynomial $f^{(u)}$ has coefficients in $\{0, \ldots, B_\mathsf{ks}-1\}$.
+
+The per-coefficient key-switching noise variance per level is
+
+$$V_\text{ks} = L_\mathsf{ks} \cdot d \cdot \frac{B_\mathsf{ks}^2}{3} \cdot s^2
+= 3 \cdot 2048 \cdot \frac{(2^{19})^2}{3} \cdot 40.96 \approx 2^{54.4}.$$
+
+The noise recurrence per CDKS level is $V_\ell = 4 V_{\ell-1} + V_\text{ks}$:
+$C^\text{sum}$ and $C^\text{diff}$ each carry noise from both the even
+and odd sub-results (variance $2 V_{\ell-1}$ each), and their
+combination in $C^\text{sum} + \mathsf{AutoKS}(C^\text{diff})$
+contributes $4 V_{\ell-1}$ total because the terms reference
+independent coefficient indices under the automorphism permutation.
+
+Solving for $L = 11$ levels, the per-slot noise after packing is
+
+$$V_\text{packed} = V_\text{scan} + \frac{d^2 - 1}{3} \cdot V_\text{ks}$$
+
+where the $d^2 = 4^{11}$ amplification on the base noise exactly
+cancels the $d^{-1}$ pre-scaling (restoring the effective scan noise
+$V_\text{scan}$), and the key-switching noise accumulates as a
+geometric sum.
+
+Numerically:
+$(d^2 - 1)/3 \cdot V_\text{ks} = 1\,398\,101 \cdot 2^{54.4} \approx 2^{74.8}$.
+The key-switching noise dominates:
+$V_\text{packed} \approx 2^{74.8}$,
+$\sigma_\text{packed} \approx 2^{37.4}$.
+
+#### Split Modulus Switching Noise
+
+Per [Split Modulus Switching], the server rounds each packed RLWE
+ciphertext $(a, b)$ to smaller moduli. After the client lifts and
+decrypts ($u = \tilde{b} + \tilde{a} \cdot s^\star$), two rounding
+errors contribute:
+
+**Mask rounding.** Each coefficient of $a$ is rounded to
+$q_\mathsf{mask} = q_{2,1}$, introducing per-coefficient error bounded
+by $R_a = q / (2 q_\mathsf{mask}) \approx 2^{26.9}$. Multiplication by
+$s^\star$ amplifies this over $d$ terms:
+
+$$V_\text{mask} = d \cdot \frac{R_a^2}{3} \cdot s^2 \approx 2^{68.6}.$$
+
+**Payload rounding.** Each coefficient of $b$ is rounded to
+$q_\mathsf{payload} = 2^{20}$, introducing per-coefficient error
+bounded by $R_b = q / (2 q_\mathsf{payload}) \approx 2^{34.9}$.
+This contributes directly (not multiplied by $s^\star$):
+
+$$V_\text{payload} = \frac{R_b^2}{3} \approx 2^{68.2}.$$
+
+Total modulus-switching noise:
+$V_\text{ms} = V_\text{mask} + V_\text{payload} \approx 2^{69.4}$,
+$\sigma_\text{ms} \approx 2^{34.7}$.
+
+#### Final Decryption Error Bound
+
+The total per-slot noise variance at decryption is the sum of the
+packing and modulus-switching contributions:
+
+$$V_\text{total} = V_\text{packed} + V_\text{ms}
+\approx 2^{74.8} + 2^{69.4} \approx 2^{74.9}.$$
+
+The packing key-switching noise dominates.
+$\sigma_\text{total} \approx 2^{37.5}$.
+
+| Stage | $\log_2 V$ | $\log_2 \sigma$ |
+|---|---|---|
+| Scan noise (worst case, Tier 2) | 51.4 | 25.7 |
+| Single key-switch level $V_\text{ks}$ | 54.4 | 27.2 |
+| After CDKS packing (11 levels) | 74.8 | 37.4 |
+| Modulus switching (mask + payload) | 69.4 | 34.7 |
+| **Total at decryption** | **74.9** | **37.5** |
+
+Decryption succeeds when every slot's noise magnitude is below
+$\Delta/2 \approx 2^{40.9}$. With
+$t = \Delta / (2\sigma_\text{total}) = 2^{40.9} / 2^{37.5} = 2^{3.4} \approx 10.6$
+standard deviations, the sub-Gaussian tail bound gives:
+
+$$\Pr\bigl[|X| > t \cdot \sigma_\text{total}\bigr]
+\leq 2\exp(-t^2/2) \approx 2^{-80}.$$
+
+For Tier 2, each response consists of
+$\lceil 14\,007 / 2048 \rceil = 7$ packed RLWE ciphertexts with
+$7 \times 2048 = 14\,336$ total slots. Applying a union bound:
+
+$$\Pr[\text{any slot fails}]
+\leq 14\,336 \times 2^{-80} < 2^{14} \cdot 2^{-80} = 2^{-66}.$$
+
+This is well below the $2^{-40}$ correctness target.
+
 
 # Rationale
+
+## Noise Recurrence
+
+The [Correctness Noise Budget] uses the conservative recurrence
+$V_\ell = 4 V_{\ell-1} + V_\text{ks}$, which treats the four noise
+terms per CDKS level (from $C^\text{sum}$ and
+$\mathsf{AutoKS}(C^\text{diff})$) as independent. Some CDKS
+references use the tighter $V_\ell = 2 V_{\ell-1} + V_\text{ks}$,
+which accounts for correlation between the sum and difference
+branches. Under the tighter recurrence the accumulated key-switching
+noise is $(2^{11} - 1) V_\text{ks} \approx 2^{65.3}$, giving
+$t \approx 294$ standard deviations and failure probability
+$< 2^{-62\,000}$. Both recurrences satisfy the $2^{-40}$ correctness
+bound by a wide margin; the conservative choice was made to avoid
+relying on the correlation argument.
+
+## Cross-Check Against the YPIR Paper
+
+The YPIR paper's correctness proof (Theorem 3.4, Appendix C) analyzes
+the default YPIR variant (DoublePIR-based). This ZIP uses YPIR+SP,
+which eliminates the DoublePIR second level; the CDKS packing and
+modulus-switching stages that dominate the noise budget are identical.
+
+The two analyses agree on all methodological choices: discrete
+Gaussian noise model, the independence heuristic for intermediate
+error terms, the $d^{-1} \bmod q$ pre-scaling and its restoration
+during packing, split modulus switching with the same target moduli,
+and a subgaussian tail bound with union bound over output slots. The
+paper tracks subgaussian width parameters ($\sigma^2$) while this ZIP
+tracks variance ($s^2 = \sigma^2/(2\pi)$); these are equivalent in
+the tail bound. The paper's CDKS noise accumulation term
+$(d_2^2 - 1)(t d_2 z^2)/3$ matches this ZIP's
+$(d^2 - 1)/3 \cdot V_\text{ks}$.
+
+The only structural difference is that the YPIR paper's noise budget
+must also accommodate the DoublePIR second level, so the parameters
+selected for default YPIR provide additional correctness headroom when
+used for YPIR+SP. No discrepancy affects the $\delta \leq 2^{-40}$
+conclusion for the parameters in this ZIP.
 
 ## Parameter Selection
 
