@@ -1812,6 +1812,150 @@ this KDM structure for the parameter sizes used in this ZIP.
 | B: Packing-key RLWE | RLWE | $2048$ | $55.9$ | $6.4$ | $33$ | Pseudorandom (ChaCha20 seed) |
 | C: Circular/KDM (packing key) | KDM-RLWE | $2048$ | $55.9$ | $6.4$ | $33$ | + encrypts $B_\mathsf{ks}^u \cdot \tau_{k_r}(s^\star)$ under $s^\star$ |
 
+### Hardness Estimates
+
+The following estimates were produced by
+`tools/nullifier_pir_analysis.py` using the lattice
+estimator [^Albrecht2015] (commit `a51a410`) with both the Core-SVP
+(ADPS16) and MATZOV cost models. Core-SVP prices a single sieve call
+at $2^{0.292\beta}$; MATZOV accounts for progressive BKZ,
+dimensions-for-free, and refined nearest-neighbor sieve
+costs [^MATZOV2022].
+
+| Instance | Attack | $\beta$ | Core-SVP (bits) | MATZOV (bits) |
+|---|---|---|---|---|
+| A: Selector LWE (Tier 2, binding) | uSVP | 356 | 104.0 | 132.6 |
+| A: Selector LWE (Tier 2) | dual hybrid | 360 | 105.1 | 134.5 |
+| A: Selector LWE (Tier 1) | uSVP | 357 | 104.2 | 132.8 |
+| B: Packing-key RLWE ($m = 33$) | all | — | $\infty$ | $\infty$ |
+
+For Instance B, 33 samples are insufficient for any known lattice
+attack; the estimator reports infinite cost under both models.
+
+The binding case is Instance A at Tier 2, where the uSVP attack with
+block size $\beta = 356$ gives the lowest cost: $2^{104.0}$ under
+Core-SVP and $2^{132.6}$ under MATZOV.
+
+### Comparison with YPIR Paper
+
+The YPIR paper [^YPIR] claims 128-bit security for these parameters
+($d = 2048$, $q \approx 2^{56}$, $\sigma = 6.4\sqrt{2\pi}$) and
+references lattice estimator commit `4195c66` (2024-02-06). The paper
+does not state which cost model anchors the 128-bit claim. This ZIP's
+estimates use the newer commit `a51a410`; under the MATZOV cost model
+the binding instance achieves 132.6-bit security (exceeding 128),
+while under Core-SVP alone it achieves 104 bits (below 128). The
+parameters are identical; the 128-bit claim is consistent with MATZOV
+or any cost model more realistic than bare Core-SVP. This parallels
+the situation with Kyber512, where NIST declares category-1 security
+despite a Core-SVP estimate of only ~115 bits (see below).
+
+### Kyber512 Calibration
+
+To contextualize these estimates, the same lattice estimator and cost
+models are applied to Kyber512
+($n = 512$, $q = 3329$, $\mathsf{Xs} = \mathsf{Xe} = \text{CBD}(\eta{=}3)$),
+which NIST has declared category-1 (128-bit) secure [^NIST-Kyber-FAQ].
+
+| Instance | $\beta$ (uSVP) | Core-SVP (bits) | MATZOV (bits) |
+|---|---|---|---|
+| Kyber512 | 406 | 115.5 | 139.7 |
+| PIR Tier 2 (binding) | 356 | 104.0 | 132.6 |
+
+The uSVP block-size ratio is $356 / 406 \approx 0.88$, a
+cost-model-independent measure of relative security. Under any cost
+model applied uniformly to both parameter sets, the PIR parameters are
+within 12% of Kyber512 in block-size terms.
+
+NIST's own best gate-count estimate for attacking Kyber512 is
+$2^{147}$–$2^{160}$ [^NIST-Kyber-FAQ], substantially above Core-SVP's
+$2^{115.5}$ for the same parameters. The NIST Kyber-512
+FAQ [^NIST-Kyber-FAQ] explains that Core-SVP is a coarse, simplified
+metric that does not account for the full cost of the BKZ algorithm,
+memory access overhead, or hidden constant factors in sieving. NIST
+approved Kyber512 for category-1 (128-bit) deployment despite a
+Core-SVP estimate well below 128 bits, on the basis that realistic
+gate-count analysis yields security comfortably above the category-1
+threshold.
+
+### Cost Model Analysis
+
+Following the NIST Kyber-512 FAQ methodology [^NIST-Kyber-FAQ],
+realistic gate costs for the binding instance ($\beta = 356$) are
+estimated by layering corrections onto the Core-SVP baseline:
+
+| Cost model | Est. bits | Notes |
+|---|---|---|
+| Core-SVP (ADPS16, $0.292\beta$) | 104 | Lower bound; ignores all overheads |
+| MATZOV (estimator) | 132.6 | Progressive BKZ + refined NN; assumes free memory |
+| MATZOV + hidden overheads | ~136–138 | Ducas 2022 [^Ducas2022] correction (+3–5 bits) |
+| MATZOV + $k{=}2$ memory | ~146 | NIST best guess (cube-root memory access) |
+| MATZOV + $k{=}1$ memory | ~153 | Conservative (BGJ1 square-root memory) |
+
+The corrections are cumulative:
+
+1. **MATZOV sieving refinements** (progressive BKZ, dimensions-for-free,
+   refined nearest-neighbor costs [^MATZOV2022]): add ~28.6 bits over
+   Core-SVP for $\beta = 356$. These refinements are from Section 6 of
+   the MATZOV report and are independent of the dual-sieve controversy
+   (Ducas–Pulles 2023).
+
+2. **Hidden overheads** [^Ducas2022]: the BDGL sieving algorithm incurs
+   an overhead of ~$2^6$ in practice compared to the idealized model,
+   partially mitigable in the full attack. After mitigation this adds
+   ~3–5 bits.
+
+3. **Memory access costs**: the best sieving algorithms require
+   exponentially many queries to exponentially large memory. Under
+   NIST's $k = 2$ (cube-root) regime, each sieve call incurs an
+   additional $(0.3294 - 0.292) \times \beta \approx 13.3$ bits of
+   overhead.
+
+Under any cost model more realistic than bare $2^{0.292\beta}$, these
+parameters exceed 125-bit classical security.
+
+### Sensitivity Analysis
+
+The following table shows how bit-security varies with the noise
+standard deviation (all other parameters fixed at $n = 2048$,
+$q \approx 2^{55.9}$, $m = 262\,144$):
+
+| Stddev | Width $\sigma$ | Core-SVP (bits) | MATZOV (bits) | Core $\geq 125$ | MATZOV $\geq 125$ |
+|---|---|---|---|---|---|
+| 3.2 | 8.0 | 98.4 | 127.3 | no | yes |
+| **6.4** | **16.0** | **104.0** | **132.6** | **no** | **yes** |
+| 10.0 | 25.1 | 107.5 | 135.9 | no | yes |
+| 16.0 | 40.1 | 111.3 | 139.6 | no | yes |
+| 25.0 | 62.7 | 115.3 | 143.4 | no | yes |
+| 40.0 | 100.3 | 119.7 | 147.6 | no | yes |
+| 64.0 | 160.4 | 124.1 | 151.8 | no | yes |
+| 100.0 | 250.7 | 128.8 | 156.3 | yes | yes |
+
+Under MATZOV, even stddev $= 3.2$ provides 127.3 bits, exceeding the
+125-bit target. The current stddev $= 6.4$ provides 7.6 bits of margin.
+Under Core-SVP alone, reaching 125 bits would require
+stddev $\approx 64$–$100$, which is impractical for the noise budget
+(see the correctness analysis below).
+
+### Security Assessment
+
+Under the MATZOV cost model, the binding LWE instance (Tier 2 selector)
+achieves 132.6-bit classical security, exceeding the 125-bit target
+with 7.6 bits of margin.
+
+Core-SVP alone gives only 104 bits for these parameters, but Core-SVP
+also gives only 115.5 bits for Kyber512, which NIST approved for
+128-bit (category-1) deployment after determining that realistic
+gate-count analysis yields $2^{147}$–$2^{160}$ [^NIST-Kyber-FAQ].
+The MATZOV cost model captures the same refinements underlying NIST's
+analysis (progressive BKZ, sieving optimizations). A reviewer who
+accepts any cost model sufficient to justify Kyber512 at 128 bits will
+find that the same model applied to the PIR parameters exceeds 125 bits.
+
+The cost model ladder in [Cost Model Analysis] further shows that
+adding memory-access overhead (the $k = 2$ regime NIST considers most
+realistic) raises the PIR estimate to ~146 bits.
+
 
 # Rationale
 
@@ -2314,6 +2458,12 @@ three-tier Poseidon tree, the Tier 1 / Tier 2 query orchestration described in t
 [^Peikert2016]: [A Decade of Lattice Cryptography](https://doi.org/10.1561/0400000074). Chris Peikert. Foundations and Trends in Theoretical Computer Science 10(4):283–424, 2016.
 
 [^LPR2013]: [On Ideal Lattices and Learning with Errors over Rings](https://doi.org/10.1007/s00145-012-9140-y). Vadim Lyubashevsky, Chris Peikert, and Oded Regev. Journal of the ACM 60(6):43:1–43:35, 2013.
+
+[^MATZOV2022]: [Report on the Security of LWE: Improved Dual Lattice Attack](https://zenodo.org/records/6412487). MATZOV, April 2022.
+
+[^Ducas2022]: [Estimating the Hidden Overheads in the BDGL Lattice Sieving Algorithm](https://eprint.iacr.org/2022/922). Léo Ducas. Cryptology ePrint Archive 2022/922. Published in PQ Crypto 2022.
+
+[^NIST-Kyber-FAQ]: [Kyber-512 FAQ](https://csrc.nist.gov/csrc/media/Projects/post-quantum-cryptography/documents/faq/Kyber-512-FAQ.pdf). NIST Post-Quantum Cryptography project, December 2023.
 
 [^ChaCha20]: [ChaCha20 and Poly1305 for IETF Protocols (RFC 8439)](https://www.rfc-editor.org/rfc/rfc8439)
 
