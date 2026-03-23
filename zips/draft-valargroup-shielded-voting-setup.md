@@ -158,9 +158,9 @@ A complete deployment consists of:
   (see [^draft-submission-server]).
 - **Nullifier service** — a PIR server that provides private nullifier
   exclusion proofs to voters (see [Nullifier Service (PIR Server)]).
-- **Service discovery API** — a centralized bootstrap directory that
-  wallet clients and joining validators query to discover vote chain and
-  PIR server endpoints (see [Service Discovery]).
+- **Service discovery** — a centralized bootstrap directory for
+  validator onboarding, plus a per-vote configuration file for wallet
+  client integration (see [Service Discovery]).
 - **Admin interface** — a management UI for approving pending validator
   registrations and configuring service discovery endpoints.
 
@@ -270,26 +270,110 @@ The service pipeline (each step has a corresponding
 
 ### Service Discovery
 
-The service discovery API is a centralized bootstrap directory that
-serves as the entry point for both validator onboarding and wallet
-client integration. It exposes a `/api/voting-config` endpoint that
-returns:
+Service discovery serves two distinct audiences with different
+integration models: validators and wallet clients.
 
-- **Vote chain endpoints** — REST API URLs for active validators.
-- **PIR server endpoints** — URLs for nullifier exclusion proof queries.
+#### Validator Discovery
+
+The bootstrap operator runs a centralized bootstrap directory that
+serves as the entry point for validator onboarding. It exposes an
+`/api/voting-config` endpoint that returns vote chain endpoint URLs.
 
 Joining validators query this API to discover a seed node, fetch its
 CometBFT P2P identity and genesis, and connect. Once connected,
 CometBFT's peer exchange (PEX) protocol handles discovery of
 additional peers — the API is only needed for initial bootstrap.
 
-Wallet clients (e.g. Zodl) query the same API to discover vote chain
-and PIR server endpoints for voter-facing operations.
-
 New validators register themselves with the API after joining. The
 bootstrap operator approves pending registrations through an admin
 interface, after which the validator appears in the published
 endpoint list.
+
+#### Wallet Client Discovery
+
+Wallet clients discover vote chain and PIR server endpoints through a
+**per-vote configuration** shipped with each wallet release. For each
+voting round, the poll runner publishes a vote configuration file that
+wallet developers merge into their codebase. This model requires a
+wallet update for each new voting round.
+
+The vote configuration file MUST contain the following fields:
+
+| Field              | Type             | Description                                     |
+| ------------------ | ---------------- | ----------------------------------------------- |
+| `config\_version`  | integer          | Configuration format version (currently 1)      |
+| `vote\_round\_id`  | string           | Hex-encoded vote round ID                       |
+| `chain\_endpoints` | array of strings | REST API URLs for vote chain nodes              |
+| `pir\_endpoints`   | array of strings | URLs for nullifier exclusion proof servers      |
+| `snapshot\_height` | integer          | Zcash mainnet snapshot block height             |
+| `vote\_end\_time`  | string           | ISO 8601 timestamp for voting deadline          |
+| `pir\_version`     | integer          | Supported PIR retrieval scheme version (0 or 1) |
+
+Wallets MUST validate that they support the `config\_version` before
+using the configuration. If the wallet encounters an unsupported
+`config\_version`, it MUST inform the user that a wallet update is
+required.
+
+A standardized, long-lived discovery mechanism (such as a persistent
+vote chain with on-chain service registration) is desirable but
+requires a higher level of review and standardization effort. Until
+such a mechanism is specified, per-vote wallet configuration is the
+required integration path.
+
+### Wallet API
+
+The vote chain exposes a versioned REST API for wallet-facing
+operations. The API version is encoded in the URL path prefix
+(`/shielded-vote/v1/`). A version bump indicates a breaking change
+to request or response formats.
+
+#### Transaction Submission
+
+Wallets submit delegation and vote transactions directly to any vote
+chain node:
+
+| Method | Path                              | Description                 |
+| ------ | --------------------------------- | --------------------------- |
+| POST   | `/shielded-vote/v1/delegate-vote` | Submit a delegation (ZKP 1) |
+| POST   | `/shielded-vote/v1/cast-vote`     | Submit a vote (ZKP 2)       |
+
+Each request body is a JSON-encoded transaction message as specified
+in [^draft-voting-protocol].
+
+#### Share Submission
+
+Wallets submit encrypted vote share payloads to the helper server
+embedded in each vote chain node. The helper server constructs the
+share reveal proof (ZKP 3) and submits the reveal transaction to the
+chain on the wallet's behalf at a staggered time (see
+[^draft-submission-server]).
+
+| Method | Path                                           | Description                     |
+| ------ | ---------------------------------------------- | ------------------------------- |
+| POST   | `/api/v1/shares`                               | Submit encrypted share payloads |
+| GET    | `/api/v1/share-status/{roundId}/{nullifier}` | Check share submission status   |
+
+#### Data Queries
+
+Wallets query vote chain nodes for round state and snapshot data:
+
+| Method | Path                                                   | Description                             |
+| ------ | ------------------------------------------------------ | --------------------------------------- |
+| GET    | `/shielded-vote/v1/rounds/active`                      | Active voting round                     |
+| GET    | `/shielded-vote/v1/round/{round\_id}`                  | Specific voting round by ID             |
+| GET    | `/shielded-vote/v1/snapshot-data/{height}`             | Pool snapshot roots at a given height   |
+| GET    | `/shielded-vote/v1/commitment-tree/{round\_id}/latest` | Latest commitment tree state            |
+| GET    | `/shielded-vote/v1/commitment-tree/{round\_id}/leaves` | Commitment tree leaves in a block range |
+| GET    | `/shielded-vote/v1/tx/{hash}`                          | Transaction confirmation status         |
+
+The `/shielded-vote/v1/snapshot-data/{height}` endpoint returns the
+pool snapshot required for constructing the delegation proof:
+
+| Field                  | Type   | Description                                    |
+| ---------------------- | ------ | ---------------------------------------------- |
+| `nc\_root`             | string | Hex-encoded Orchard note commitment tree root  |
+| `nullifier\_imt\_root` | string | Hex-encoded nullifier non-membership tree root |
+| `snapshot\_blockhash`  | string | Hex-encoded block hash at the snapshot height  |
 
 ## Conducting a Voting Round
 
@@ -349,11 +433,11 @@ last-moment buffer for submission timing
 
 ### Timing Parameters
 
-| Parameter                      | Value        | Notes                         |
-| ------------------------------ | ------------ | ----------------------------- |
-| EA ceremony timing             |              | See [^draft-ceremony]         |
-| Voting window                  | Configurable | Set by `vote_end_time`        |
-| Tally computation              | Automatic    | Triggered after window closes |
+| Parameter          | Value        | Notes                         |
+| ------------------ | ------------ | ----------------------------- |
+| EA ceremony timing |              | See [^draft-ceremony]         |
+| Voting window      | Configurable | Set by `vote_end_time`        |
+| Tally computation  | Automatic    | Triggered after window closes |
 
 ## Verification and Auditing
 
