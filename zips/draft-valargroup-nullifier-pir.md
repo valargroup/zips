@@ -1846,16 +1846,16 @@ estimates use the newer commit `a51a410`; under the MATZOV cost model
 the binding instance achieves 132.6-bit security (exceeding 128),
 while under Core-SVP alone it achieves 104 bits (below 128). The
 parameters are identical; the 128-bit claim is consistent with MATZOV
-or any cost model more realistic than bare Core-SVP. This parallels
-the situation with Kyber512, where NIST declares category-1 security
-despite a Core-SVP estimate of only ~115 bits (see below).
+or any cost model more realistic than bare Core-SVP. The same
+gap between Core-SVP and more refined models appears for Kyber512,
+where Core-SVP gives only ~115 bits yet MATZOV gives ~140 bits (see
+below).
 
 ### Kyber512 Calibration
 
-To contextualize these estimates, the same lattice estimator and cost
-models are applied to Kyber512
-($n = 512$, $q = 3329$, $\mathsf{Xs} = \mathsf{Xe} = \text{CBD}(\eta{=}3)$),
-which NIST has declared category-1 (128-bit) secure [^NIST-Kyber-FAQ].
+To calibrate the gap between Core-SVP and more refined cost models,
+the same lattice estimator is applied to Kyber512
+($n = 512$, $q = 3329$, $\mathsf{Xs} = \mathsf{Xe} = \text{CBD}(\eta{=}3)$).
 
 | Instance | $\beta$ (uSVP) | Core-SVP (bits) | MATZOV (bits) |
 |---|---|---|---|
@@ -1867,16 +1867,21 @@ cost-model-independent measure of relative security. Under any cost
 model applied uniformly to both parameter sets, the PIR parameters are
 within 12% of Kyber512 in block-size terms.
 
-NIST's own best gate-count estimate for attacking Kyber512 is
+Kyber512 exhibits the same pattern: Core-SVP gives 115.5 bits while
+MATZOV gives 139.7 bits, a gap of ~24 bits. NIST's gate-count
+estimate for attacking Kyber512 is
 $2^{147}$–$2^{160}$ [^NIST-Kyber-FAQ], substantially above Core-SVP's
 $2^{115.5}$ for the same parameters. The NIST Kyber-512
-FAQ [^NIST-Kyber-FAQ] explains that Core-SVP is a coarse, simplified
-metric that does not account for the full cost of the BKZ algorithm,
-memory access overhead, or hidden constant factors in sieving. NIST
-approved Kyber512 for category-1 (128-bit) deployment despite a
-Core-SVP estimate well below 128 bits, on the basis that realistic
-gate-count analysis yields security comfortably above the category-1
-threshold.
+FAQ [^NIST-Kyber-FAQ] explains that Core-SVP does not account for the
+full cost of the BKZ algorithm, memory access overhead, or hidden
+constant factors in sieving.
+
+The purpose of this comparison is not to invoke NIST's authority
+for the PIR parameters — NIST evaluated Kyber for a different use
+case and the adequacy of Kyber512's security margins is itself
+debated [^Bernstein2020]. Rather, the comparison shows that the
+large gap between Core-SVP and MATZOV is a structural feature of the
+cost models, not a weakness specific to the PIR parameter set.
 
 ### Cost Model Analysis
 
@@ -1886,7 +1891,7 @@ estimated by layering corrections onto the Core-SVP baseline:
 
 | Cost model | Est. bits | Notes |
 |---|---|---|
-| Core-SVP (ADPS16, $0.292\beta$) | 104 | Lower bound; ignores all overheads |
+| Core-SVP (ADPS16, $0.292\beta$) | 104 | Simplified estimate; omits factors in both directions |
 | MATZOV (estimator) | 132.6 | Progressive BKZ + refined NN; assumes free memory |
 | MATZOV + hidden overheads | ~136–138 | Ducas 2022 [^Ducas2022] correction (+3–5 bits) |
 | MATZOV + $k{=}2$ memory | ~146 | NIST best guess (cube-root memory access) |
@@ -1943,14 +1948,12 @@ Under the MATZOV cost model, the binding LWE instance (Tier 2 selector)
 achieves 132.6-bit classical security, exceeding the 125-bit target
 with 7.6 bits of margin.
 
-Core-SVP alone gives only 104 bits for these parameters, but Core-SVP
-also gives only 115.5 bits for Kyber512, which NIST approved for
-128-bit (category-1) deployment after determining that realistic
-gate-count analysis yields $2^{147}$–$2^{160}$ [^NIST-Kyber-FAQ].
-The MATZOV cost model captures the same refinements underlying NIST's
-analysis (progressive BKZ, sieving optimizations). A reviewer who
-accepts any cost model sufficient to justify Kyber512 at 128 bits will
-find that the same model applied to the PIR parameters exceeds 125 bits.
+Core-SVP alone gives only 104 bits for these parameters. Core-SVP
+also gives only 115.5 bits for Kyber512, where MATZOV gives 139.7
+bits — the same ~24-bit structural gap between the two cost models.
+This gap reflects omitted overheads (progressive BKZ, sieving
+constants, memory access costs) that are present in any realistic
+attack but absent from the bare $2^{0.292\beta}$ formula.
 
 The cost model ladder in [Cost Model Analysis] further shows that
 adding memory-access overhead (the $k = 2$ regime NIST considers most
@@ -2464,6 +2467,8 @@ three-tier Poseidon tree, the Tier 1 / Tier 2 query orchestration described in t
 [^Ducas2022]: [Estimating the Hidden Overheads in the BDGL Lattice Sieving Algorithm](https://eprint.iacr.org/2022/922). Léo Ducas. Cryptology ePrint Archive 2022/922. Published in PQ Crypto 2022.
 
 [^NIST-Kyber-FAQ]: [Kyber-512 FAQ](https://csrc.nist.gov/csrc/media/Projects/post-quantum-cryptography/documents/faq/Kyber-512-FAQ.pdf). NIST Post-Quantum Cryptography project, December 2023.
+
+[^Bernstein2020]: [A discretization attack](https://cr.yp.to/papers/discretization-20200918.pdf). Daniel J. Bernstein, 2020.
 
 [^ChaCha20]: [ChaCha20 and Poly1305 for IETF Protocols (RFC 8439)](https://www.rfc-editor.org/rfc/rfc8439)
 
