@@ -1775,21 +1775,40 @@ that motivates this requirement.
 
 The YPIR+SP construction relies on three distinct cryptographic
 hardness instances. An adversary who breaks any one of them can
-compromise either query privacy (Instance A) or response integrity
-(Instances B and C). This section catalogs each instance; hardness
-estimates and the correctness noise budget are based on these
-parameters.
+compromise either query privacy (the structured selector assumption)
+or response integrity (the packing-key RLWE and circular-security
+assumptions). This section catalogs each instance and
+distinguishes the assumptions from the concrete proxy
+estimates used for calibration.
+
+The construction relies on four ingredients:
+
+1. a structured-selector hardness assumption for the seeded
+   negacyclic selector matrix used in query generation;
+2. standard RLWE hardness for the packing-key ciphertexts when viewed
+   as ordinary RLWE samples;
+3. an additional circular-security / KDM assumption for the packing
+   key, because those ciphertexts encrypt known linear functions of
+   the secret under that same secret; and
+4. the independence heuristic and subgaussian noise model used in the
+   correctness estimate below.
+
+The lattice-estimator outputs reported in [Hardness Estimates]
+quantify an ordinary-LWE proxy for the structured selector
+assumption and do not
+quantify the structured-selector or circular-security assumptions.
 
 In all instances, the discrete Gaussian width parameter is
 $\sigma = 6.4\sqrt{2\pi} \approx 16.03$, corresponding to standard
 deviation $6.4$. The secret and error distributions are identical
 (normal-form LWE/RLWE).
 
-### Selector LWE
+### Structured Selector Instance
 
-The selector $c$ defined in [Regev Encryption] constitutes an
-LWE instance. An adversary who observes the public matrix $A$ and the
-selector vector $c$ obtains $m$ LWE samples of the form
+The selector $c$ defined in [Regev Encryption] induces a structured
+seeded-negacyclic hardness instance. An adversary who observes the
+public matrix $A$ and the selector vector $c$ obtains $m$ samples of
+the form
 
 $$c[j] = \langle \mathbf{a}_j, \mathbf{s} \rangle + d^{-1} e_j + \Delta \cdot d^{-1} \cdot \mu_i[j] \pmod{q}$$
 
@@ -1819,17 +1838,17 @@ $2048 \times 262\,144$ matrix.
 
 The hardness estimates in [Hardness Estimates] are for ordinary
 (unstructured) LWE with the same $(n, q, \sigma, m)$ parameters. They
-are used here as a heuristic proxy for the selector LWE instance,
-whose public matrix is instead generated from $\mathsf{seed\_A}$ with
-negacyclic structure. For the power-of-2 cyclotomic ring
+are used here as a concrete calibration proxy for the selector instance, whose public matrix is instead generated from
+$\mathsf{seed\_A}$ with negacyclic structure. For the power-of-2 cyclotomic ring
 $X^{2048}+1$, no attack is known that gives a better concrete cost for
 this seeded negacyclic/module-LWE-style distribution than for ordinary
 LWE at comparable parameters; see Peikert's survey [^Peikert2016] and
 Lyubashevsky–Peikert–Regev [^LPR2013]. However, this ZIP does not claim
 that the query selector reduces to ordinary LWE. Its privacy
 analysis therefore relies on the assumption that the structured
-selector generated from $\mathsf{seed\_A}$ is not easier to break than
-the corresponding ordinary LWE instance at the stated parameters.
+selector generated from $\mathsf{seed\_A}$ is not materially easier to
+break than the corresponding ordinary-LWE proxy at the stated
+parameters.
 
 The selector secret $\mathbf{s}$ is the coefficient vector of the
 fresh RLWE secret $s^\star$ sampled in [Client Key Generation]. A
@@ -1887,7 +1906,8 @@ $s^\star$ over $R_q$.
 This constitutes a key-dependent message (KDM) security assumption:
 the adversary sees RLWE encryptions of known linear functions of the
 secret key under that same key. This is strictly stronger than the
-standard RLWE assumption on which Instance B relies. The same
+standard RLWE assumption on which the packing-key RLWE analysis
+relies. The same
 circular-security assumption is required by Spiral and
 OnionPIR [^YPIR], and is standard for lattice-based schemes employing
 automorphism-based key switching. No attack is known that exploits
@@ -1896,10 +1916,10 @@ this KDM structure for the parameter sizes used in this ZIP.
 Under standard RLWE, if one ignores the key-dependent plaintexts, the
 packing-key ciphertexts expose only 33 RLWE samples per query, which is
 too few for any known lattice attack at these parameters; the estimator
-therefore reports infinite cost for Instance B. However, this does not
-establish security for Instance C. Instance C requires an additional
-circular-security / KDM assumption: that RLWE remains hard even when the
-adversary is given encryptions of the known linear functions
+therefore reports infinite cost for the packing-key RLWE proxy.
+However, this does not establish security for the circular-security /
+KDM assumption. That assumption requires RLWE to remain hard even when
+the adversary is given encryptions of the known linear functions
 $B_\mathsf{ks}^u \cdot \tau_{k_r}(s^\star)$ under the same secret
 $s^\star$. No attack is known that exploits this structure for the
 parameter sizes used in this ZIP, but the hardness estimates in
@@ -1910,10 +1930,10 @@ assumption.
 
 | Instance | Type | $n$ / $d$ | $\log_2 q$ | Stddev | Samples | Public-matrix constraint |
 |---|---|---|---|---|---|---|
-| A: Selector LWE (Tier 2, binding) | LWE | $2048$ | $55.9$ | $6.4$ | $262\,144$ | Negacyclic blocks ($128$ ring elements) |
-| A: Selector LWE (Tier 1) | LWE | $2048$ | $55.9$ | $6.4$ | $2\,048$ | Negacyclic block ($1$ ring element) |
-| B: Packing-key RLWE | RLWE | $2048$ | $55.9$ | $6.4$ | $33$ | Pseudorandom (ChaCha20 seed) |
-| C: Circular/KDM (packing key) | KDM-RLWE | $2048$ | $55.9$ | $6.4$ | $33$ | + encrypts $B_\mathsf{ks}^u \cdot \tau_{k_r}(s^\star)$ under $s^\star$ |
+| Selector LWE (Tier 2, binding) | LWE | $2048$ | $55.9$ | $6.4$ | $262\,144$ | Negacyclic blocks ($128$ ring elements) |
+| Selector LWE (Tier 1) | LWE | $2048$ | $55.9$ | $6.4$ | $2\,048$ | Negacyclic block ($1$ ring element) |
+| Packing-key RLWE | RLWE | $2048$ | $55.9$ | $6.4$ | $33$ | Pseudorandom (ChaCha20 seed) |
+| Packing-key circular security | KDM-RLWE | $2048$ | $55.9$ | $6.4$ | $33$ | + encrypts $B_\mathsf{ks}^u \cdot \tau_{k_r}(s^\star)$ under $s^\star$ |
 
 ### Hardness Estimates
 
@@ -1927,10 +1947,10 @@ costs [^MATZOV2022].
 
 | Instance | Attack | $\beta$ | Core-SVP (bits) | MATZOV (bits) |
 |---|---|---|---|---|
-| A: Selector LWE (Tier 2, binding) | uSVP | 356 | 104.0 | 132.6 |
-| A: Selector LWE (Tier 2) | dual hybrid | 360 | 105.1 | 134.5 |
-| A: Selector LWE (Tier 1) | uSVP | 357 | 104.2 | 132.8 |
-| B: Packing-key RLWE ($m = 33$) | all | — | $\infty$ | $\infty$ |
+| Selector LWE (Tier 2, binding) | uSVP | 356 | 104.0 | 132.6 |
+| Selector LWE (Tier 2) | dual hybrid | 360 | 105.1 | 134.5 |
+| Selector LWE (Tier 1) | uSVP | 357 | 104.2 | 132.8 |
+| Packing-key RLWE ($m = 33$) | all | — | $\infty$ | $\infty$ |
 
 For Instance B, 33 samples are insufficient for any known lattice
 attack; the estimator reports infinite cost under both models.
@@ -1948,8 +1968,10 @@ does not state which cost model anchors the 128-bit claim. This ZIP's
 estimates use the newer commit `a51a410`; under the MATZOV cost model
 the binding instance achieves 132.6-bit security (exceeding 128),
 while under Core-SVP alone it achieves 104 bits (below 128). The
-parameters are identical; the 128-bit claim is consistent with MATZOV
-or any cost model more realistic than bare Core-SVP. The same
+parameters are identical; the 128-bit claim is consistent with
+MATZOV-style modeling and with the qualitative observation that bare
+Core-SVP is a lower-bound that omits substantial attack
+overheads. The same
 gap between Core-SVP and more refined models appears for Kyber512,
 where Core-SVP gives only ~115 bits yet MATZOV gives ~140 bits (see
 below).
@@ -1990,7 +2012,9 @@ cost models, not a weakness specific to the PIR parameter set.
 
 Following the NIST Kyber-512 FAQ methodology [^NIST-Kyber-FAQ],
 realistic gate costs for the binding instance ($\beta = 356$) are
-estimated by layering corrections onto the Core-SVP baseline:
+estimated by layering corrections onto the Core-SVP baseline. This
+subsection provides heuristic calibration for interpreting the
+estimator outputs; it is not an independent hardness proof:
 
 | Cost model | Est. bits | Notes |
 |---|---|---|
@@ -2051,9 +2075,9 @@ stddev $\approx 64$–$100$, which is impractical for the noise budget
 
 ### Security Assessment
 
-For the modeled selector LWE instance, the binding Tier 2 estimate is
-132.6 bits under the MATZOV cost model and 104.0 bits under the
-Core-SVP cost model.
+For the unstructured Tier 2 selector instance, the
+binding estimate is 132.6 bits under the MATZOV cost model and 104.0
+bits under the Core-SVP cost model.
 
 This ZIP therefore treats the 125-bit classical-security target as
 satisfied under the MATZOV-style attack-cost model used throughout this
@@ -2121,7 +2145,9 @@ Decryption succeeds when the noise in every plaintext slot is less
 than $\Delta/2$ in absolute value, where
 $\Delta = \lfloor q/p \rfloor = 4\,087\,810\,653\,052 \approx 2^{41.9}$.
 This section tracks the per-slot noise variance through four stages
-and derives the correctness error probability.
+and derives a heuristic correctness estimate. The estimate below relies
+on the independence heuristic and on treating the accumulated error
+terms as subgaussian with the stated variance proxy.
 
 Throughout, the discrete Gaussian standard deviation is
 $s = 6.4$ (the width parameter $\sigma = 6.4\sqrt{2\pi}$ gives
@@ -2283,7 +2309,8 @@ the default YPIR variant (DoublePIR-based). This ZIP uses YPIR+SP,
 which eliminates the DoublePIR second level; the CDKS packing and
 modulus-switching stages that dominate the noise budget are identical.
 
-The two analyses agree on all methodological choices: discrete
+This analysis follows the same general methodology as the YPIR paper
+for the shared CDKS packing and modulus-switching stages: discrete
 Gaussian noise model, the independence heuristic for intermediate
 error terms, the $d^{-1} \bmod q$ pre-scaling and its restoration
 during packing, split modulus switching with the same target moduli,
@@ -2297,8 +2324,8 @@ $(d^2 - 1)/3 \cdot V_\text{ks}$.
 The only structural difference is that the YPIR paper's noise budget
 must also accommodate the DoublePIR second level, so the parameters
 selected for default YPIR provide additional correctness headroom when
-used for YPIR+SP. No discrepancy affects the $\delta \leq 2^{-40}$
-conclusion for the parameters in this ZIP.
+used for YPIR+SP. No discrepancy identified here appears to threaten
+the $\delta \leq 2^{-40}$ target.
 
 ## Parameter Selection
 
