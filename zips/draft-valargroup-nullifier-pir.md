@@ -1869,9 +1869,9 @@ A PIR retrieval client transmits its YPIR+SP query as a single binary
 payload with the following layout:
 
 ```
-Bytes 0–7:                            pqr\_byte\_len (little-endian u64)
+Bytes 0–7:                             pqr\_byte\_len (little-endian u64)
 Bytes 8 to 8 + pqr\_byte\_len - 1:     packed query row (array of u64s, each little-endian)
-Remaining bytes:                      packing key public params (array of u64s, each little-endian)
+Remaining bytes:                       packing key public params (array of u64s, each little-endian)
 ```
 
 Where `pqr_byte_len` is the byte length of the packed query row
@@ -1929,7 +1929,7 @@ serialized ciphertexts in order:
 $$C'\_0 \| C'\_1 \| \cdots \| C'\_{m-1}$$
 
 | Tier | $m$ | Response size |
-|------|-----|---------------|
+| ---- | --- | ------------- |
 | 1    | 4   | 49,152 bytes  |
 | 2    | 7   | 86,016 bytes  |
 
@@ -1965,8 +1965,9 @@ serialized in ascending order by $\mathsf{low}$. Each record is 64
 bytes: $[\mathsf{low} \| \mathsf{width}]$ using the field element
 encoding above. Leaf indices $\geq n$ are the canonical empty leaf
 $(\mathsf{low} = 0, \mathsf{width} = 0)$ and are not included in the
-payload; clients MUST pad to $2^{26}$ leaves when reconstructing the
-tree.
+payload. When extracting a Tier 2 row whose leaf indices extend beyond
+$n$, clients MUST substitute the canonical empty leaf for those
+positions.
 
 
 # Rationale
