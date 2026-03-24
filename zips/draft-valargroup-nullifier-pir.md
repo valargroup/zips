@@ -42,6 +42,11 @@ RLWE (Ring Learning With Errors)
   ring $\mathbb{Z}[x]/(x^d + 1)$. A single RLWE ciphertext encrypts $d$
   values simultaneously, roughly speaking.
 
+Selector LWE instance
+
+: The LWE-style hardness instance induced by the row-selector query
+  ciphertext and its public matrix.
+
 CDKS transformation
 
 : The Chen–Dai–Kim–Song packing procedure [^CDKS2020] that converts $d$ LWE
@@ -1814,14 +1819,14 @@ $2048 \times 262\,144$ matrix.
 
 The hardness estimates in [Hardness Estimates] are for ordinary
 (unstructured) LWE with the same $(n, q, \sigma, m)$ parameters. They
-are used here as a heuristic proxy for the selector instance,
+are used here as a heuristic proxy for the selector LWE instance,
 whose public matrix is instead generated from $\mathsf{seed\_A}$ with
 negacyclic structure. For the power-of-2 cyclotomic ring
 $X^{2048}+1$, no attack is known that gives a better concrete cost for
 this seeded negacyclic/module-LWE-style distribution than for ordinary
 LWE at comparable parameters; see Peikert's survey [^Peikert2016] and
 Lyubashevsky–Peikert–Regev [^LPR2013]. However, this ZIP does not claim
-that the deployed selector reduces to ordinary LWE. Its privacy
+that the query selector reduces to ordinary LWE. Its privacy
 analysis therefore relies on the assumption that the structured
 selector generated from $\mathsf{seed\_A}$ is not easier to break than
 the corresponding ordinary LWE instance at the stated parameters.
@@ -2014,8 +2019,12 @@ The corrections are cumulative:
    additional $(0.3294 - 0.292) \times \beta \approx 13.3$ bits of
    overhead.
 
-Under any cost model more realistic than bare $2^{0.292\beta}$, these
-parameters exceed 125-bit classical security.
+Accordingly, the 125-bit classical-security target is met for the
+modeled selector LWE instance under the MATZOV cost model, and remains
+above 125 bits under the additional heuristic calibrations discussed in
+this section. This ZIP does not claim that every cost model more
+realistic than bare $2^{0.292\beta}$ yields a bound above 125 bits for
+this instance.
 
 ### Sensitivity Analysis
 
@@ -2042,20 +2051,23 @@ stddev $\approx 64$–$100$, which is impractical for the noise budget
 
 ### Security Assessment
 
-Under the MATZOV cost model, the binding LWE instance (Tier 2 selector)
-achieves 132.6-bit classical security, exceeding the 125-bit target
-with 7.6 bits of margin.
+For the modeled selector LWE instance, the binding Tier 2 estimate is
+132.6 bits under the MATZOV cost model and 104.0 bits under the
+Core-SVP cost model.
 
-Core-SVP alone gives only 104 bits for these parameters. Core-SVP
-also gives only 115.5 bits for Kyber512, where MATZOV gives 139.7
-bits — the same ~24-bit structural gap between the two cost models.
-This gap reflects omitted overheads (progressive BKZ, sieving
-constants, memory access costs) that are present in any realistic
-attack but absent from the bare $2^{0.292\beta}$ formula.
+This ZIP therefore treats the 125-bit classical-security target as
+satisfied under the MATZOV-style attack-cost model used throughout this
+analysis, not as a model-independent theorem for the deployed
+construction. The Kyber512 comparison and the cost-model ladder in
+[Kyber512 Calibration] and [Cost Model Analysis] are heuristic
+calibration arguments supporting that modeling choice; they are not
+independent hardness proofs for this PIR instance.
 
-The cost model ladder in [Cost Model Analysis] further shows that
-adding memory-access overhead (the $k = 2$ regime NIST considers most
-realistic) raises the PIR estimate to ~146 bits.
+In addition, the overall privacy argument relies on the structured
+selector assumption described above and on the circular-security / KDM
+assumption for the packing key described in [Circular Security]. The
+Hardness Estimates quantify the modeled selector LWE instance; they do
+not quantify those additional assumptions.
 
 ### Quantum Security Estimates
 
@@ -2117,7 +2129,7 @@ variance $s^2 = 40.96$).
 
 #### Regev Encryption Noise
 
-The deployed selector ([Regev Encryption]) is
+The query selector ([Regev Encryption]) is
 
 $$c[j] = (A^T \mathbf{s})[j] + d^{-1} e_j + \Delta \cdot d^{-1} \mu_i[j],$$
 
@@ -2309,14 +2321,16 @@ current row size this yields approximately 48 GB, still within the
 
 The YPIR paper [^YPIR] targets 128-bit computational security with
 correctness error at most $2^{-40}$ for this parameter family. The
-independent analysis in [Noise Analysis] confirms these claims: under
-the MATZOV cost model the binding LWE instance achieves 132.6-bit
-security (see [Hardness Estimates]), and the stage-by-stage noise
-budget yields a correctness error of $\leq 2^{-66}$ (see
+independent analysis in [Noise Analysis] supports the following
+model-qualified conclusion for this ZIP: for the modeled selector LWE
+instance, the binding estimate is 132.6 bits under MATZOV and 104.0
+bits under Core-SVP (see [Hardness Estimates]), while the stage-by-stage
+noise budget yields a correctness error of $\leq 2^{-66}$ (see
 [Correctness Noise Budget]). The Kyber512 calibration in
-[Kyber512 Calibration] provides an additional cost-model-independent
-reference point. The shared-modulus YPIR+SP constants are taken from
-the referenced implementation used by this ZIP.
+[Kyber512 Calibration] provides additional heuristic context for the
+cost-model gap, but is not an independent hardness proof for this PIR
+instance. The shared-modulus YPIR+SP constants are taken from the
+referenced implementation used by this ZIP.
 
 ## Rationale for representing $q$ as two primes
 
