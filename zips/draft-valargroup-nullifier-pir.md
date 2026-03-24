@@ -1847,6 +1847,128 @@ second rows (row 1); the corresponding public rows (row 0) are
 reconstructed by the server from $\mathsf{seed\_pack}$ using the
 convention in [Packing-Level Ciphertext Convention].
 
+## Wire Format
+
+### Field Element Encoding
+
+All Pallas base field elements MUST be serialized as 32 bytes in
+little-endian canonical representation. This is the standard
+`to_repr()` encoding: the integer value in $\{0, \ldots, p - 1\}$
+(where $p$ is the Pallas base field modulus) is written as 32 bytes
+with the least significant byte first. Implementations MUST reject any
+32-byte sequence whose integer value is $\geq p$.
+
+All Poseidon hash outputs are field elements and use the same encoding.
+
+All hex-encoded field elements use lowercase hexadecimal without a `0x`
+prefix (64 hex characters for 32 bytes).
+
+### YPIR Query Serialization
+
+A PIR retrieval client transmits its YPIR+SP query as a single binary
+payload with the following layout:
+
+```
+Bytes 0–7:                            pqr\_byte\_len (little-endian u64)
+Bytes 8 to 8 + pqr\_byte\_len - 1:     packed query row (array of u64s, each little-endian)
+Remaining bytes:                      packing key public params (array of u64s, each little-endian)
+```
+
+Where `pqr_byte_len` is the byte length of the packed query row
+section, not including the 8-byte length prefix itself.
+
+The packed query row contains the Regev-encrypted selector vector as
+specified in [Query Generation]. The packing key public params contain
+the RLWE ciphertexts generated during [PackingKeyGeneration].
+
+Both sections are arrays of 64-bit unsigned integers, each serialized
+in little-endian byte order.
+
+The server MUST validate the payload as follows before processing:
+
+- The payload MUST be at least 8 bytes.
+- `pqr_byte_len` MUST be a positive multiple of 8.
+- `pqr_byte_len` MUST NOT exceed the payload length minus 8.
+- The remaining bytes (after the length prefix and packed query row)
+  MUST be a non-empty positive multiple of 8.
+
+### YPIR Response Serialization
+
+The server response for a PIR retrieval query is the ordered sequence of
+modulus-switched RLWE ciphertexts
+
+$$R = (C'\_0, \ldots, C'\_{m-1})$$
+
+produced by $\mathsf{SplitModulusSwitchRLWEResponse}$ as specified in
+[Split Modulus Switching]. The number of ciphertexts $m$ equals the
+`instances` parameter from [Parameters]: $m = 4$ for Tier 1 and
+$m = 7$ for Tier 2.
+
+Each ciphertext $C'\_j = (a'\_j, b'\_j)$ MUST be serialized into a
+fixed-size byte string using LSB-first bitpacking. Let
+
+$$B\_a = \lceil \log\_2(q\_{\mathsf{mask}}) \rceil = 28 \qquad B\_b = \lceil \log\_2(q\_{\mathsf{payload}}) \rceil = 20$$
+
+1. Write the $d = 2048$ coefficients of $a'\_j$ in index order
+   ($a'\_{j,0}, a'\_{j,1}, \ldots, a'\_{j,d-1}$), each as a
+   $B\_a$-bit unsigned integer. Bits are packed LSB-first into a
+   contiguous byte stream: bit 0 of $a'\_{j,0}$ is the least
+   significant bit of the first byte, and subsequent coefficient bits
+   follow without padding.
+2. Immediately following, write the $d$ coefficients of $b'\_j$ in
+   index order, each as a $B\_b$-bit unsigned integer, packed LSB-first
+   into the same byte stream.
+
+The total size of one serialized ciphertext is
+$\lceil (B\_a + B\_b) \cdot d / 8 \rceil = \lceil 98304 / 8 \rceil = 12288$
+bytes.
+
+The complete response payload is the concatenation of the $m$
+serialized ciphertexts in order:
+
+$$C'\_0 \| C'\_1 \| \cdots \| C'\_{m-1}$$
+
+| Tier | $m$ | Response size |
+|------|-----|---------------|
+| 1    | 4   | 49,152 bytes  |
+| 2    | 7   | 86,016 bytes  |
+
+The client recovers each $C'\_j$ by reading 12,288 bytes per
+ciphertext, unpacking the bitpacked coefficients, and applying
+$\mathsf{LiftModulusSwitchedRLWECiphertext}$ as specified in
+[Split Modulus Switching] to obtain the lifted ciphertext for
+decryption via [Recovery of the Selected Row].
+
+### Full Download Tree Format
+
+A full download server provides the complete exclusion tree as a single
+binary payload with the following layout:
+
+```
+Bytes 0–7:                  num\_real\_leaves (little-endian u64)
+Bytes 8–196,583:            Tier 0 data (196,576 bytes)
+Bytes 196,584–25,231,335:   All 2,048 Tier 1 rows (25,034,752 bytes)
+Remaining bytes:            num\_real\_leaves × 64 bytes of leaf records
+```
+
+**Tier 0 data** is serialized as specified in
+[Tier 0: Plaintext Broadcast (Depths 0–11)]: 2,047 internal node
+hashes in BFS order (65,504 bytes), followed by 2,048 subtree records
+(131,072 bytes, each 64 bytes: hash $\|$ min\_key).
+
+**Tier 1 rows** are concatenated in row-index order (row 0 first,
+row 2,047 last). Each row is serialized as specified in
+[Tier 1: Small PIR (Depths 11–18)]: 12,224 bytes per row.
+
+**Leaf records** are the $n$ real (non-empty) exclusion-range leaves,
+serialized in ascending order by $\mathsf{low}$. Each record is 64
+bytes: $[\mathsf{low} \| \mathsf{width}]$ using the field element
+encoding above. Leaf indices $\geq n$ are the canonical empty leaf
+$(\mathsf{low} = 0, \mathsf{width} = 0)$ and are not included in the
+payload; clients MUST pad to $2^{26}$ leaves when reconstructing the
+tree.
+
+
 # Rationale
 
 ## Retrieval Scheme Versioning
