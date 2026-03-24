@@ -1993,7 +1993,7 @@ assumption.
 
 The following estimates were produced by
 `tools/nullifier_pir_analysis.py` using the lattice
-estimator [^Albrecht2015] (commit `a51a410`) with both the Core-SVP
+estimator [^Albrecht2015] (commit `a51a410`, 2026-03-23) with both the Core-SVP
 (ADPS16) and MATZOV cost models. Core-SVP prices a single sieve call
 at $2^{0.292\beta}$; MATZOV accounts for progressive BKZ,
 dimensions-for-free, and refined nearest-neighbor sieve
@@ -2026,18 +2026,25 @@ $2^{131.5}$ bits.
 
 The YPIR paper [^YPIR] claims 128-bit security for these parameters
 ($d = 2048$, $q \approx 2^{56}$, $\sigma = 6.4\sqrt{2\pi}$) and
-references lattice estimator commit `4195c66` (2024-02-06). The paper
-does not state which cost model anchors the 128-bit claim. This ZIP's
-estimates use the newer commit `a51a410`; under the MATZOV cost model
-the binding instance achieves 131.5-bit security (exceeding 128),
-while under Core-SVP alone it achieves 104 bits (below 128). The
-parameters are identical; the 128-bit claim is consistent with
+references lattice estimator commit `4195c66` (2024-02-06).
+
+In a public clarification [^ypir-issue-1], the YPIR author confirmed
+this claim using the full `LWE.estimate` (not the `.rough()`
+approximation) and noted that the paper specifies noise using the
+subgaussian width $s = \sigma\sqrt{2\pi}$, so the passed in standard
+deviation corresponding to the RLWE-selector is $\sigma = 6.4$. This
+ZIP's estimates use the newer commit `a51a410`; under the MATZOV cost
+model the binding instance achieves 131.5-bit security (exceeding
+128), while under Core-SVP alone it achieves 104 bits (below 128).
+
+The parameters are identical; the 128-bit claim is consistent with
 MATZOV-style modeling and with the qualitative observation that bare
-Core-SVP is a lower-bound that omits substantial attack
-overheads. The same
-gap between Core-SVP and more refined models appears for Kyber512,
-where Core-SVP gives only ~115 bits yet MATZOV gives ~140 bits (see
-below).
+Core-SVP is a lower-bound that omits substantial attack overheads. 
+
+The
+same gap between Core-SVP and more refined models appears for
+Kyber512, where Core-SVP gives only ~115 bits yet MATZOV gives ~140
+bits (see below).
 
 ### Kyber512 Calibration
 
@@ -2321,24 +2328,6 @@ $(d^2 - 1)/3 \cdot V_\text{ks} = 1\,398\,101 \cdot 2^{54.4} \approx 2^{74.8}$.
 The key-switching noise dominates:
 $V_\text{packed} \approx 2^{74.8}$,
 $\sigma_\text{packed} \approx 2^{37.4}$.
-
-### Choice of Noise Recurrence
-
-The analysis above uses the conservative recurrence
-$V_\ell = 4 V_{\ell-1} + V_\text{ks}$, which treats the four noise
-terms per CDKS level (from $C^\text{sum}$ and
-$\mathsf{AutoKS}(C^\text{diff})$) as independent. Some CDKS
-references use the tighter $V_\ell = 2 V_{\ell-1} + V_\text{ks}$,
-which accounts for correlation between the sum and difference
-branches. Under the tighter recurrence the accumulated key-switching
-noise is $(2^{11} - 1) V_\text{ks} \approx 2^{65.4}$. Including the
-modulus-switching noise $V_\text{ms} \approx 2^{69.4}$ (derived in
-[Split Modulus Switching Noise] below), the total becomes
-$V_\text{total}^\text{tight} \approx 2^{65.4} + 2^{69.4} \approx 2^{69.6}$,
-giving $t \approx 69$ standard deviations and failure probability
-$< 2^{-3\,400}$. Both recurrences satisfy the $2^{-40}$ correctness
-bound by a wide margin; the conservative choice was made to avoid
-relying on the correlation argument.
 
 ### Split Modulus Switching Noise
 
@@ -2966,6 +2955,8 @@ three-tier Poseidon tree, the Tier 1 / Tier 2 query orchestration described in t
 [^nullifier-pir-impl]: [Nullifier PIR reference implementation](https://github.com/valargroup/vote-nullifier-pir)
 
 [^ypir-impl]: [YPIR reference implementation (artifact branch)](https://github.com/menonsamir/ypir/tree/artifact)
+
+[^ypir-issue-1]: [YPIR author clarification on LWE estimator parameters (GitHub issue #1, comment by Samir Menon)](https://github.com/menonsamir/ypir/issues/1#issuecomment-1967365470). February 2024.
 
 [^protocol-pallasandvesta]: [Zcash Protocol Specification, Section 5.4.9.6: Pallas and Vesta](protocol/protocol.pdf#pallasandvesta)
 
