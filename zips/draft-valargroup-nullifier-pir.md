@@ -1994,13 +1994,13 @@ assumption.
 The following estimates were produced by
 `tools/nullifier_pir_analysis.py` using the lattice
 estimator [^Albrecht2015] (commit `a51a410`, 2026-03-23) with both the Core-SVP
-(ADPS16) and MATZOV cost models. Core-SVP prices a single sieve call
-at $2^{0.292\beta}$; MATZOV accounts for progressive BKZ,
+(ADPS16) and Matzov cost models. Core-SVP prices a single sieve call
+at $2^{0.292\beta}$; Matzov accounts for progressive BKZ,
 dimensions-for-free, and refined nearest-neighbor sieve
-costs [^MATZOV2022]. Three attacks are evaluated: primal uSVP, primal
-BDD (Babai nearest plane [^LiuNgu2013]), and the MATZOV dual hybrid.
+costs [^Matzov2022]. Three attacks are evaluated: primal uSVP, primal
+BDD (Babai nearest plane [^LiuNgu2013]), and the Matzov dual hybrid.
 
-| Instance | Attack | $\beta$ | Core-SVP (bits) | MATZOV (bits) |
+| Instance | Attack | $\beta$ | Core-SVP (bits) | Matzov (bits) |
 |---|---|---|---|---|
 | Selector RLWE (Tier 2, binding) | uSVP | 356 | 104.0 | 132.6 |
 | Selector RLWE (Tier 2) | BDD | 356 / 351 | 104.2 | 131.5 |
@@ -2009,7 +2009,7 @@ BDD (Babai nearest plane [^LiuNgu2013]), and the MATZOV dual hybrid.
 | Selector RLWE (Tier 1) | BDD | 357 / 352 | 104.6 | 131.7 |
 | Packing-key RLWE ($m = 33$) | all | — | $\infty$ | $\infty$ |
 
-For the BDD rows, the $\beta$ column shows Core-SVP / MATZOV block
+For the BDD rows, the $\beta$ column shows Core-SVP / Matzov block
 sizes, which differ because the two cost models shift the optimal
 lattice dimension.
 
@@ -2019,7 +2019,7 @@ both models.
 
 The binding case is the Tier 2 selector. Under Core-SVP the cheapest
 attack is uSVP at $\beta = 356$, giving $2^{104.0}$ bits. Under
-MATZOV the cheapest attack is BDD at $\beta = 351$, giving
+Matzov the cheapest attack is BDD at $\beta = 351$, giving
 $2^{131.5}$ bits.
 
 ### Comparison with YPIR Paper
@@ -2033,17 +2033,17 @@ this claim using the full `LWE.estimate` (not the `.rough()`
 approximation) and noted that the paper specifies noise using the
 subgaussian width $s = \sigma\sqrt{2\pi}$, so the passed in standard
 deviation corresponding to the RLWE-selector is $\sigma = 6.4$. This
-ZIP's estimates use the newer commit `a51a410`; under the MATZOV cost
+ZIP's estimates use the newer commit `a51a410`; under the Matzov cost
 model the binding instance achieves 131.5-bit security (exceeding
 128), while under Core-SVP alone it achieves 104 bits (below 128).
 
 The parameters are identical; the 128-bit claim is consistent with
-MATZOV-style modeling and with the qualitative observation that bare
+Matzov-style modeling and with the qualitative observation that bare
 Core-SVP is a lower-bound that omits substantial attack overheads. 
 
 The
 same gap between Core-SVP and more refined models appears for
-Kyber512, where Core-SVP gives only ~115 bits yet MATZOV gives ~140
+Kyber512, where Core-SVP gives only ~115 bits yet Matzov gives ~140
 bits (see below).
 
 ### Kyber512 Calibration
@@ -2052,20 +2052,20 @@ To calibrate the gap between Core-SVP and more refined cost models,
 the same lattice estimator is applied to Kyber512
 ($n = 512$, $q = 3329$, $\mathsf{Xs} = \mathsf{Xe} = \text{CBD}(\eta{=}3)$).
 
-| Instance | $\beta$ (uSVP) | Core-SVP (bits) | MATZOV (bits) |
+| Instance | $\beta$ (uSVP) | Core-SVP (bits) | Matzov (bits) |
 |---|---|---|---|
 | Kyber512 | 406 | 115.5 | 139.7 |
 | PIR Tier 2 (binding) | 356 | 104.0 | 131.5 |
 
-The Core-SVP and MATZOV columns report the minimum across uSVP, BDD,
-and dual hybrid. Under MATZOV the PIR binding attack is BDD
+The Core-SVP and Matzov columns report the minimum across uSVP, BDD,
+and dual hybrid. Under Matzov the PIR binding attack is BDD
 ($\beta = 351$); the uSVP block-size ratio $356 / 406 \approx 0.88$
 remains a cost-model-independent measure of relative security. Under
 any cost model applied uniformly to both parameter sets, the PIR
 parameters are within 12% of Kyber512 in uSVP block-size terms.
 
 Kyber512 exhibits the same pattern: Core-SVP gives 115.5 bits while
-MATZOV gives 139.7 bits, a gap of ~24 bits. NIST's gate-count
+Matzov gives 139.7 bits, a gap of ~24 bits. NIST's gate-count
 estimate for attacking Kyber512 is
 $2^{147}$–$2^{160}$ [^NIST-Kyber-FAQ], substantially above Core-SVP's
 $2^{115.5}$ for the same parameters. The NIST Kyber-512
@@ -2084,7 +2084,7 @@ The purpose of this comparison is not to invoke NIST's authority
 for the PIR parameters — NIST evaluated Kyber for a different use
 case and the adequacy of Kyber512's security margins is itself
 debated [^Bernstein2020]. Rather, the comparison shows that the
-large gap between Core-SVP and MATZOV is a structural feature of the
+large gap between Core-SVP and Matzov is a structural feature of the
 cost models, not a weakness specific to the PIR parameter set.
 
 ### Cost Model Analysis
@@ -2092,7 +2092,7 @@ cost models, not a weakness specific to the PIR parameter set.
 Following the NIST Kyber-512 FAQ methodology [^NIST-Kyber-FAQ],
 realistic gate costs for the binding instance are estimated by
 layering corrections onto the Core-SVP baseline. Under Core-SVP the
-binding attack is uSVP ($\beta = 356$); under MATZOV the binding
+binding attack is uSVP ($\beta = 356$); under Matzov the binding
 attack is BDD ($\beta = 351$). This subsection provides heuristic
 calibration for interpreting the estimator outputs; it is not an
 independent hardness proof:
@@ -2100,33 +2100,33 @@ independent hardness proof:
 | Cost model | Est. bits | Derivation |
 |---|---|---|
 | Core-SVP (ADPS16, $0.292\beta$) | 104 | uSVP $\beta = 356$; single sieve call, no BKZ overhead |
-| MATZOV (estimator) | 131.5 | BDD $\beta = 351$; progressive BKZ + refined NN; free memory |
-| MATZOV + hidden overheads | ~135–137 | $131.5 + 3\text{–}5$ (Ducas 2022 [^Ducas2022] correction) |
-| MATZOV + memory ($k{=}2$) | ~145 | $131.5 + 13.1$ (cube-root memory access) |
-| MATZOV + memory ($k{=}1$) | ~152 | $131.5 + 20.0$ (BGJ1 square-root memory) |
+| Matzov (estimator) | 131.5 | BDD $\beta = 351$; progressive BKZ + refined NN; free memory |
+| Matzov + hidden overheads | ~135–137 | $131.5 + 3\text{–}5$ (Ducas 2022 [^Ducas2022] correction) |
+| Matzov + memory ($k{=}2$) | ~145 | $131.5 + 13.1$ (cube-root memory access) |
+| Matzov + memory ($k{=}1$) | ~152 | $131.5 + 20.0$ (BGJ1 square-root memory) |
 | All corrections stacked ($k{=}2$) | ~148–150 | $131.5 + 3\text{–}5 + 13.1$ |
 
-Each row after MATZOV applies one independent correction to the
-MATZOV baseline of 131.5 bits; the final row stacks all corrections.
+Each row after Matzov applies one independent correction to the
+Matzov baseline of 131.5 bits; the final row stacks all corrections.
 The three correction sources are:
 
-1. **MATZOV sieving refinements** (progressive BKZ, dimensions-for-free,
-   refined nearest-neighbor costs [^MATZOV2022]): add ~27.5 bits over
-   Core-SVP for the binding instance, producing the 131.5-bit MATZOV
-   baseline. These refinements are from Section 6 of the MATZOV report
+1. **Matzov sieving refinements** (progressive BKZ, dimensions-for-free,
+   refined nearest-neighbor costs [^Matzov2022]): add ~27.5 bits over
+   Core-SVP for the binding instance, producing the 131.5-bit Matzov
+   baseline. These refinements are from Section 6 of the Matzov report
    and are independent of the dual-sieve controversy
    (Ducas–Pulles 2023).
 
 2. **Hidden overheads** [^Ducas2022]: the BDGL sieving algorithm incurs
    an overhead of ~$2^6$ in practice compared to the idealized model,
    partially mitigable in the full attack. After mitigation this adds
-   ~3–5 bits on top of the MATZOV baseline.
+   ~3–5 bits on top of the Matzov baseline.
 
 3. **Memory access costs**: the best sieving algorithms require
    exponentially many queries to exponentially large memory. Under
    NIST's $k = 2$ (cube-root) regime, each sieve call incurs an
    additional $(0.3294 - 0.292) \times \beta \approx 13.1$ bits of
-   overhead (using the MATZOV binding $\beta = 351$). Under the more
+   overhead (using the Matzov binding $\beta = 351$). Under the more
    conservative BGJ1 $k = 1$ (square-root) regime, the overhead is
    $(0.349 - 0.292) \times \beta \approx 20.0$ bits.
 
@@ -2135,11 +2135,10 @@ Corrections 2 and 3 address different aspects of the sieve cost
 independent of each other.
 
 Accordingly, the 125-bit classical-security target is met for the
-selector Ring-LWE instance under the MATZOV cost model, and remains
+selector Ring-LWE instance under the Matzov cost model, and remains
 above 125 bits under the additional heuristic calibrations discussed in
-this section. This ZIP does not claim that every cost model more
-realistic than bare $2^{0.292\beta}$ yields a bound above 125 bits for
-this instance.
+this section. This ZIP does not claim that every cost model more realistic than
+bare Core-SVP yields a bound above 125 bits for this instance.
 
 ### Sensitivity Analysis
 
@@ -2147,7 +2146,7 @@ The following table shows how bit-security varies with the noise
 standard deviation (all other parameters fixed at $n = 2048$,
 $q \approx 2^{55.9}$, $m = 262\,144$):
 
-| Stddev | Width $\sigma$ | Core-SVP (bits) | MATZOV (bits) | Core $\geq 125$ | MATZOV $\geq 125$ |
+| Stddev | Width $\sigma$ | Core-SVP (bits) | Matzov (bits) | Core $\geq 125$ | Matzov $\geq 125$ |
 |---|---|---|---|---|---|
 | 3.2 | 8.0 | 98.4 | 126.4 | no | yes |
 | **6.4** | **16.0** | **104.0** | **131.5** | **no** | **yes** |
@@ -2158,7 +2157,7 @@ $q \approx 2^{55.9}$, $m = 262\,144$):
 | 64.0 | 160.4 | 124.1 | 150.8 | no | yes |
 | 100.0 | 250.7 | 128.8 | 155.0 | yes | yes |
 
-Under MATZOV, even stddev $= 3.2$ provides 126.4 bits, exceeding the
+Under Matzov, even stddev $= 3.2$ provides 126.4 bits, exceeding the
 125-bit target. The current stddev $= 6.4$ provides 6.5 bits of margin.
 Under Core-SVP alone, reaching 125 bits would require
 stddev $\approx 64$–$100$, which is impractical for the noise budget
@@ -2169,12 +2168,12 @@ stddev $\approx 64$–$100$, which is impractical for the noise budget
 The selector instance relies on Ring-LWE hardness over
 $\mathbb{Z}_q[X]/(X^{2048}+1)$, evaluated using the same
 lattice-estimator methodology applied to ML-KEM. The binding estimate
-is 131.5 bits under the MATZOV cost model (BDD attack) and 104.0 bits
+is 131.5 bits under the Matzov cost model (BDD attack) and 104.0 bits
 under Core-SVP (uSVP attack), meeting the 125-bit target under
-MATZOV-style modeling.
+Matzov-style modeling.
 
 This ZIP therefore treats the 125-bit classical-security target as
-satisfied under the MATZOV-style attack-cost model used throughout this
+satisfied under the Matzov-style attack-cost model used throughout this
 analysis, not as a model-independent theorem for the deployed
 construction. The Kyber512 comparison and the cost-model ladder in
 [Kyber512 Calibration] and [Cost Model Analysis] are heuristic
@@ -2198,37 +2197,46 @@ quantum cost model. For the binding instance:
 |---|---|---|
 | Classical Core-SVP ($0.292\beta$, uSVP $\beta = 356$) | 104.0 | — |
 | Quantum Core-SVP ($0.265\beta$, uSVP $\beta = 356$) | 94.3 | Unit-cost QRAM |
-| Classical MATZOV (estimator, BDD $\beta = 351$) | 131.5 | Free classical memory |
+| Classical Matzov (estimator, BDD $\beta = 351$) | 131.5 | Free classical memory |
 
 The 94.3-bit quantum Core-SVP estimate is a single-oracle lower
 bound, analogous to the classical 104-bit figure. In the classical
-setting, the gap between Core-SVP and MATZOV is 27.5 bits,
+setting, the gap between Core-SVP and Matzov is 27.5 bits,
 reflecting progressive BKZ overhead, sieving constants, and memory
 access costs absent from the bare $2^{0.292\beta}$ formula. Whether
 an analogous gap exists in the quantum setting, where quantum sieve
 calls replace classical ones within the BKZ algorithmic structure,
-remains an open question; no quantum MATZOV estimate is produced in
+remains an open question; no quantum Matzov estimate is produced in
 this analysis.
 
 The Kyber512 calibration from [Kyber512 Calibration] extends
-directly to the quantum setting. The block-size ratio
-$356/406 \approx 0.88$ is cost-model-independent:
+directly to the quantum setting. The following table reports the
+minimum quantum Core-SVP cost across uSVP, BDD, and dual hybrid,
+produced by running the lattice estimator with the ADPS16 quantum
+cost model (`tools/nullifier_pir_analysis.py`):
 
-| Instance | $\beta$ (uSVP) | Classical Core-SVP | Quantum Core-SVP ($0.265\beta$) |
-|---|---|---|---|
-| Kyber512 | 406 | 115.5 | 107.6 |
-| PIR Tier 2 (binding) | 356 | 104.0 | 94.3 |
+| Instance | Classical Core-SVP (min) | Quantum Core-SVP (min) |
+|---|---|---|
+| Kyber512 | 115.5 | 106.3 |
+| PIR Tier 2 (binding) | 104.0 | 94.3 |
 
-NIST selected Kyber512 as PQC Category 1 (security equivalent to
-AES-128 against quantum adversaries) despite its quantum Core-SVP
-estimate of 107.6 bits, because Core-SVP omits substantial overhead
-factors [^NIST-Kyber-FAQ]. By the same reasoning, the PIR
-parameters — at 88% of Kyber512's block size — are consistent with
-the characterization in [Abstract] as plausibly post-quantum.
+For both instances, the classical and quantum columns report the
+cheapest attack across all families evaluated by the estimator. For
+Kyber512, the cheapest attack in both settings is the dual hybrid;
+for the PIR binding instance, it is uSVP. The uSVP block-size ratio
+$356/406 \approx 0.88$ remains a cost-model-independent measure of
+relative primal security.
 
 The quantum Core-SVP estimate assumes unit-cost quantum random
 access memory (QRAM). Without efficient QRAM, the quantum sieving
 advantage is reduced and estimates approach the classical values.
+
+NIST selected Kyber512 as PQC Category 1 (security equivalent to
+AES-128 against quantum adversaries) despite its quantum Core-SVP
+estimate of 106.3 bits, because Core-SVP omits substantial overhead
+factors [^NIST-Kyber-FAQ]. By the same reasoning, the PIR
+parameters, at 88% of Kyber512's uSVP block size, are consistent
+with the characterization in [Abstract] as plausibly post-quantum.
 
 ## Correctness Analysis
 
@@ -2438,7 +2446,7 @@ The YPIR paper [^YPIR] targets 128-bit computational security with
 correctness error at most $2^{-40}$ for this parameter family. The
 independent analysis in [Noise Analysis] supports the following
 model-qualified conclusion for this ZIP: for the selector Ring-LWE
-instance, the binding estimate is 131.5 bits under MATZOV and 104.0
+instance, the binding estimate is 131.5 bits under Matzov and 104.0
 bits under Core-SVP (see [Hardness Estimates]), while the stage-by-stage
 noise budget yields a correctness error of $\leq 2^{-66}$ (see
 [Correctness Analysis]). The Kyber512 calibration in
@@ -2928,7 +2936,7 @@ three-tier Poseidon tree, the Tier 1 / Tier 2 query orchestration described in t
 
 [^LaaMosPol2015]: [Finding shortest lattice vectors faster using quantum search](https://doi.org/10.1007/s10623-015-0067-5). Thijs Laarhoven, Michele Mosca, and Joop van de Pol. Designs, Codes and Cryptography 77(2-3):375–400, 2015.
 
-[^MATZOV2022]: [Report on the Security of LWE: Improved Dual Lattice Attack](https://zenodo.org/records/6412487). MATZOV, April 2022.
+[^Matzov2022]: [Report on the Security of LWE: Improved Dual Lattice Attack](https://zenodo.org/records/6412487). Matzov, April 2022.
 
 [^Ducas2022]: [Estimating the Hidden Overheads in the BDGL Lattice Sieving Algorithm](https://eprint.iacr.org/2022/922). Léo Ducas. Cryptology ePrint Archive 2022/922. Published in PQ Crypto 2022.
 
