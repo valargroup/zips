@@ -1774,33 +1774,32 @@ that motivates this requirement.
 
 ## Security Analysis
 
-The YPIR+SP construction relies on three distinct cryptographic
-hardness instances. An adversary who breaks any one of them can
-compromise either query privacy (the selector Ring-LWE instance)
-or response integrity (the packing-key RLWE and circular-security
-assumptions). This section catalogs each instance, its parameters,
+The YPIR+SP construction relies on three cryptographic hardness
+assumptions and one modeling assumption:
+
+1. **Selector RLWE.** Ring-LWE hardness for the seeded negacyclic
+   selector matrix used in query generation (the secret is a single
+   ring element, so the selector is an RLWE instance with $B$
+   samples). Breaking this compromises query privacy.
+2. **Packing-key RLWE.** Standard RLWE hardness for the packing-key
+   ciphertexts. Breaking this compromises response integrity.
+3. **Packing-key circular security.** An additional circular-security /
+   KDM assumption for the packing key, because those ciphertexts
+   encrypt known linear functions of the secret under that same
+   secret. Breaking this also compromises response integrity.
+4. **Independence heuristic.** Intermediate error terms that arise
+   at different stages of the protocol are treated as statistically
+   independent, so that variances add across stages. This is not a
+   hardness assumption but a modeling assumption for the noise
+   analysis: if it is violated, decryption may fail more often than
+   predicted but no secrets are leaked.
+
+This section catalogs the three hardness instances, their parameters,
 and the concrete hardness estimates.
-
-The construction relies on four ingredients:
-
-1. Ring-LWE hardness for the seeded negacyclic selector matrix used
-   in query generation (the secret is a single ring element, so the
-   selector is an RLWE instance with $B$ samples), evaluated via the
-   standard lattice-estimator methodology used for structured-LWE
-   schemes including ML-KEM [^NIST-Kyber-FAQ];
-2. standard RLWE hardness for the packing-key ciphertexts when viewed
-   as ordinary RLWE samples;
-3. an additional circular-security / KDM assumption for the packing
-   key, because those ciphertexts encrypt known linear functions of
-   the secret under that same secret; and
-4. the independence heuristic and subgaussian noise model used in the
-   correctness estimate below.
 
 The lattice-estimator outputs reported in [Hardness Estimates]
 evaluate the selector instance by applying the estimator to the
-corresponding LWE parameters, following the standard methodology
-used for Ring-LWE and Module-LWE-based schemes including
-ML-KEM (Kyber) [^NIST-Kyber-FAQ]. They do not quantify the
+corresponding RLWE parameters. They do not quantify the
 circular-security / KDM assumption for the packing key.
 
 In all instances, the discrete Gaussian width parameter is
@@ -1808,7 +1807,44 @@ $\sigma = 6.4\sqrt{2\pi} \approx 16.03$, corresponding to standard
 deviation $6.4$. The secret and error distributions are identical
 (normal-form LWE/RLWE).
 
-### Structured Selector Instance
+### RLWE Hardness
+
+There are two parts of the protocol relying on RLWE security:
+- Selector LWE instance
+- Packing key RLWE
+
+While the Selector LWE instance is an LWE problem, it is derived from negacyclic public randomness (i.e. ring structure).
+
+#### Methodology
+
+We analyze the hardness of Ring-LWE as an LWE problem, since, so far, the best known attacks do not make use of the ring structure [^Kyber-CoreSVP] [^NewHope].
+
+We acknowledge that algebraic attacks, attacks exploiting the ring or
+module structure rather than treating the problem as unstructured LWE, are
+an active area of research. The Kyber specification discusses the current
+state of the art in Section 5.3.1 [^Kyber], noting that recent quantum
+algorithms against Ideal-SVP [^CDW2021] do not extend to Ring-LWE, and
+that Module-LWE (which Kyber uses) plausibly creates additional obstacles.
+No known algebraic attack achieves better concrete cost than lattice
+reduction against unstructured LWE at comparable parameters.
+
+The argument chains together as follows. The worst-case reduction of
+Lyubashevsky, Peikert, and Regev [^LPR2013] establishes that breaking
+Ring-LWE requires solving worst-case Ideal-SVP with approximation factor
+$\gamma = \text{poly}(n)$. The best known quantum algorithms for
+Ideal-SVP, due to Cramer, Ducas, and Wesolowski [^CDW2021] and
+Pellet-Mary, Hanrot, and Stehlé [^PHS2019], achieve only
+$\gamma = \exp(\tilde{O}(\sqrt{n}))$. Experimental analysis by Ducas,
+Plançon, and Wesolowski [^DPW2019] confirms that the effective
+approximation factors remain exponentially large at cryptographic
+dimensions. For this ZIP's ring degree $n = 2048$, the required
+approximation factor is $\text{poly}(2048) \approx 10^{3}\text{--}10^{20}$
+(depending on degree), while the best achieved factor is
+$\exp(\tilde{O}(\sqrt{2048})) \approx \exp(\tilde{O}(45))$. This is many
+orders of magnitude larger. The gap between what an attacker would need
+and what these algorithms can deliver remains enormous.
+
+#### Structured Selector Instance
 
 The selector $c$ defined in [Regev Encryption] induces a structured
 seeded-negacyclic hardness instance. An adversary who observes the
@@ -1844,7 +1880,7 @@ $2048 \times 262\,144$ matrix.
 The hardness estimates in [Hardness Estimates] apply the lattice
 estimator to the LWE parameters $(n, q, \sigma, m)$ corresponding to
 this instance. This follows the standard methodology for evaluating
-Ring-LWE and Module-LWE instances: for power-of-2 cyclotomic rings,
+structured LWE instances: for power-of-2 cyclotomic rings,
 no attack is known that achieves better concrete cost against the
 structured problem than against unstructured LWE at comparable
 parameters (see Peikert [^Peikert2016] and
@@ -1859,7 +1895,7 @@ most $m$ samples from any single key. Across queries, the shared
 $\mathsf{seed\_A}$ yields the same $A$, but independent secrets
 prevent combining samples across queries.
 
-### Packing-key RLWE
+#### Packing-key RLWE
 
 The packing key defined in [PackingKeyGeneration] consists of 33 RLWE
 ciphertexts $K_{r,u}$ for
@@ -2157,7 +2193,12 @@ $\Delta = \lfloor q/p \rfloor = 4\,087\,810\,653\,052 \approx 2^{41.9}$.
 This section tracks the per-slot noise variance through four stages
 and derives a heuristic correctness estimate. The estimate below relies
 on the independence heuristic and on treating the accumulated error
-terms as subgaussian with the stated variance proxy.
+terms as subgaussian with the stated variance proxy. The Regev and
+database-scan stages use genuinely independent error samples ($e_j$
+are fresh discrete Gaussians), so the variance sums there are exact.
+The heuristic is needed at the CDKS packing and modulus-switching
+stages, where key-switching noise and rounding errors are treated as
+independent of each other and of the carried-forward scan noise.
 
 Throughout, the discrete Gaussian standard deviation is
 $s = 6.4$ (the width parameter $\sigma = 6.4\sqrt{2\pi}$ gives
@@ -2842,15 +2883,27 @@ three-tier Poseidon tree, the Tier 1 / Tier 2 query orchestration described in t
 
 [^Albrecht2015]: [On the concrete hardness of Learning with Errors](https://doi.org/10.1515/jmc-2015-0016). Martin R. Albrecht, Rachel Player, and Sam Scott. Journal of Mathematical Cryptology 9(3):169–203, 2015.
 
-[^Peikert2016]: [A Decade of Lattice Cryptography](https://doi.org/10.1561/0400000074). Chris Peikert. Foundations and Trends in Theoretical Computer Science 10(4):283–424, 2016.
+[^Peikert2016]: [A Decade of Lattice Cryptography](https://eprint.iacr.org/2015/939.pdf). Chris Peikert. Foundations and Trends in Theoretical Computer Science 10(4):283–424, 2016.
 
-[^LPR2013]: [On Ideal Lattices and Learning with Errors over Rings](https://doi.org/10.1007/s00145-012-9140-y). Vadim Lyubashevsky, Chris Peikert, and Oded Regev. Journal of the ACM 60(6):43:1–43:35, 2013.
+[^LPR2013]: [On Ideal Lattices and Learning with Errors over Rings](https://eprint.iacr.org/2012/230.pdf). Vadim Lyubashevsky, Chris Peikert, and Oded Regev. Journal of the ACM 60(6):43:1–43:35, 2013.
 
 [^LaaMosPol2015]: [Finding shortest lattice vectors faster using quantum search](https://doi.org/10.1007/s10623-015-0067-5). Thijs Laarhoven, Michele Mosca, and Joop van de Pol. Designs, Codes and Cryptography 77(2-3):375–400, 2015.
 
 [^MATZOV2022]: [Report on the Security of LWE: Improved Dual Lattice Attack](https://zenodo.org/records/6412487). MATZOV, April 2022.
 
 [^Ducas2022]: [Estimating the Hidden Overheads in the BDGL Lattice Sieving Algorithm](https://eprint.iacr.org/2022/922). Léo Ducas. Cryptology ePrint Archive 2022/922. Published in PQ Crypto 2022.
+
+[^Kyber]: [CRYSTALS – Kyber: a CCA-secure module-lattice-based KEM](https://eprint.iacr.org/2017/634.pdf). Joppe Bos, Léo Ducas, Eike Kiltz, Tancrède Lepoint, Vadim Lyubashevsky, John M. Schanck, Peter Schwabe, Gregor Seiler, and Damien Stehlé. Cryptology ePrint Archive 2017/634. Published in IEEE European Symposium on Security and Privacy (EuroS&P), 2018.
+
+[^Kyber-CoreSVP]: [CRYSTALS – Kyber, Section 6: Core-SVP hardness](https://eprint.iacr.org/2017/634.pdf). Bos et al., 2018.
+
+[^CDW2021]: [Short Stickelberger Class Relations and Application to Ideal-SVP](https://eprint.iacr.org/2016/885.pdf). Ronald Cramer, Léo Ducas, and Benjamin Wesolowski. Advances in Cryptology – EUROCRYPT 2017, pp. 324–348.
+
+[^PHS2019]: [Approx-SVP in Ideal Lattices with Pre-processing](https://eprint.iacr.org/2019/215.pdf). Alice Pellet-Mary, Guillaume Hanrot, and Damien Stehlé. Advances in Cryptology – EUROCRYPT 2019, pp. 685–716.
+
+[^DPW2019]: [On the Shortness of Vectors to be Found by the Ideal-SVP Quantum Algorithm](https://eprint.iacr.org/2019/1161.pdf). Léo Ducas, Maxime Plançon, and Benjamin Wesolowski. Advances in Cryptology – CRYPTO 2019, pp. 322–351.
+
+[^NewHope]: [Post-quantum key exchange – a new hope](https://cryptojedi.org/papers/newhope-20190710.pdf). Erdem Alkim, Léo Ducas, Thomas Pöppelmann, and Peter Schwabe. USENIX Security Symposium, 2016. See Section 6.1 (Methodology: the core SVP hardness).
 
 [^NIST-Kyber-FAQ]: [Kyber-512 FAQ](https://csrc.nist.gov/csrc/media/Projects/post-quantum-cryptography/documents/faq/Kyber-512-FAQ.pdf). NIST Post-Quantum Cryptography project, December 2023.
 
