@@ -1847,6 +1847,22 @@ and what these algorithms can deliver remains enormous.
 The same methodology is used by NIST for evaluating ML-KEM (Kyber),
 which relies on Module-LWE over the same family of rings [^NIST-Kyber-FAQ].
 
+The concrete security estimation proceeds in three steps. First, each
+public value in the protocol is mapped to an LWE or RLWE instance by
+identifying the secret, the public matrix, and the error distribution.
+Second, the number of samples available to the adversary from a single
+query is counted. This is a critical parameter because more samples
+can enable cheaper lattice-reduction, dual-hybrid, or combinatorial
+attacks. The sample count is bounded per key by ensuring that a fresh
+secret is drawn for every query; the shared seeds produce the same
+public matrices across queries, but independent secrets prevent an
+adversary from combining samples across queries to increase the
+effective sample count. Third, the resulting parameters
+$(n, q, \sigma, m)$ for each instance are fed into the lattice
+estimator [^Albrecht2015], which evaluates all known attack families
+and reports the cost of the cheapest one. The subsections below carry
+out the first two steps. [Hardness Estimates] reports the third.
+
 #### Structured Selector Instance
 
 The selector $c$ defined in [Regev Encryption] induces a structured
