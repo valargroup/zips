@@ -147,9 +147,10 @@ revealing which nullifier it is checking (see [PIR Construction]).
 # Privacy Implications
 
 Query privacy rests entirely on the [Regev encryption] of the client's
-selection vector. Regev encryption ensures the query
-is computationally indistinguishable from random under the LWE assumption. 
-Therefore the server learns nothing about the target record. 
+selection vector. The selector's public matrix has negacyclic (Ring-LWE)
+structure derived from $\mathsf{seed\_A}$; Regev encryption ensures the
+query is computationally indistinguishable from random under this
+assumption. Therefore the server learns nothing about the target record.
 Every other component —CDKS packing, modulus switching, the packing key—
 affects response correctness or cross-query linkability, but not the 
 confidentiality of the query itself.
@@ -1775,16 +1776,18 @@ that motivates this requirement.
 
 The YPIR+SP construction relies on three distinct cryptographic
 hardness instances. An adversary who breaks any one of them can
-compromise either query privacy (the structured selector assumption)
+compromise either query privacy (the selector Ring-LWE instance)
 or response integrity (the packing-key RLWE and circular-security
-assumptions). This section catalogs each instance and
-distinguishes the assumptions from the concrete proxy
-estimates used for calibration.
+assumptions). This section catalogs each instance, its parameters,
+and the concrete hardness estimates.
 
 The construction relies on four ingredients:
 
-1. a structured-selector hardness assumption for the seeded
-   negacyclic selector matrix used in query generation;
+1. Ring-LWE hardness for the seeded negacyclic selector matrix used
+   in query generation (the secret is a single ring element, so the
+   selector is an RLWE instance with $B$ samples), evaluated via the
+   standard lattice-estimator methodology used for structured-LWE
+   schemes including ML-KEM [^NIST-Kyber-FAQ];
 2. standard RLWE hardness for the packing-key ciphertexts when viewed
    as ordinary RLWE samples;
 3. an additional circular-security / KDM assumption for the packing
@@ -1794,9 +1797,11 @@ The construction relies on four ingredients:
    correctness estimate below.
 
 The lattice-estimator outputs reported in [Hardness Estimates]
-quantify an ordinary-LWE proxy for the structured selector
-assumption and do not
-quantify the structured-selector or circular-security assumptions.
+evaluate the selector instance by applying the estimator to the
+corresponding LWE parameters, following the standard methodology
+used for Ring-LWE and Module-LWE-based schemes including
+ML-KEM (Kyber) [^NIST-Kyber-FAQ]. They do not quantify the
+circular-security / KDM assumption for the packing key.
 
 In all instances, the discrete Gaussian width parameter is
 $\sigma = 6.4\sqrt{2\pi} \approx 16.03$, corresponding to standard
@@ -1836,19 +1841,16 @@ $\mathsf{seed\_A}$, as specified in
 $B = 128$ independent ring elements determine the full
 $2048 \times 262\,144$ matrix.
 
-The hardness estimates in [Hardness Estimates] are for ordinary
-(unstructured) LWE with the same $(n, q, \sigma, m)$ parameters. They
-are used here as a concrete calibration proxy for the selector instance, whose public matrix is instead generated from
-$\mathsf{seed\_A}$ with negacyclic structure. For the power-of-2 cyclotomic ring
-$X^{2048}+1$, no attack is known that gives a better concrete cost for
-this seeded negacyclic/module-LWE-style distribution than for ordinary
-LWE at comparable parameters; see Peikert's survey [^Peikert2016] and
-Lyubashevsky–Peikert–Regev [^LPR2013]. However, this ZIP does not claim
-that the query selector reduces to ordinary LWE. Its privacy
-analysis therefore relies on the assumption that the structured
-selector generated from $\mathsf{seed\_A}$ is not materially easier to
-break than the corresponding ordinary-LWE proxy at the stated
-parameters.
+The hardness estimates in [Hardness Estimates] apply the lattice
+estimator to the LWE parameters $(n, q, \sigma, m)$ corresponding to
+this instance. This follows the standard methodology for evaluating
+Ring-LWE and Module-LWE instances: for power-of-2 cyclotomic rings,
+no attack is known that achieves better concrete cost against the
+structured problem than against unstructured LWE at comparable
+parameters (see Peikert [^Peikert2016] and
+Lyubashevsky–Peikert–Regev [^LPR2013]). The same methodology is used
+by NIST for evaluating ML-KEM (Kyber), which relies on Module-LWE
+over the same family of rings [^NIST-Kyber-FAQ].
 
 The selector secret $\mathbf{s}$ is the coefficient vector of the
 fresh RLWE secret $s^\star$ sampled in [Client Key Generation]. A
@@ -1882,7 +1884,7 @@ available from any single key. Across queries, the shared
 $\mathsf{seed\_pack}$ yields the same public elements $\rho_{r,u}$,
 but independent secrets prevent combining samples across queries.
 Because only 33 samples are available per key, this instance has
-substantially more security margin than the selector LWE instance.
+substantially more security margin than the selector Ring-LWE instance.
 
 ### Circular Security
 
@@ -1930,8 +1932,8 @@ assumption.
 
 | Instance | Type | $n$ / $d$ | $\log_2 q$ | Stddev | Samples | Public-matrix constraint |
 |---|---|---|---|---|---|---|
-| Selector LWE (Tier 2, binding) | LWE | $2048$ | $55.9$ | $6.4$ | $262\,144$ | Negacyclic blocks ($128$ ring elements) |
-| Selector LWE (Tier 1) | LWE | $2048$ | $55.9$ | $6.4$ | $2\,048$ | Negacyclic block ($1$ ring element) |
+| Selector RLWE (Tier 2, binding) | Ring-LWE | $2048$ | $55.9$ | $6.4$ | $262\,144$ | Negacyclic blocks ($128$ ring elements) |
+| Selector RLWE (Tier 1) | Ring-LWE | $2048$ | $55.9$ | $6.4$ | $2\,048$ | Negacyclic block ($1$ ring element) |
 | Packing-key RLWE | RLWE | $2048$ | $55.9$ | $6.4$ | $33$ | Pseudorandom (ChaCha20 seed) |
 | Packing-key circular security | KDM-RLWE | $2048$ | $55.9$ | $6.4$ | $33$ | + encrypts $B_\mathsf{ks}^u \cdot \tau_{k_r}(s^\star)$ under $s^\star$ |
 
@@ -1947,15 +1949,16 @@ costs [^MATZOV2022].
 
 | Instance | Attack | $\beta$ | Core-SVP (bits) | MATZOV (bits) |
 |---|---|---|---|---|
-| Selector LWE (Tier 2, binding) | uSVP | 356 | 104.0 | 132.6 |
-| Selector LWE (Tier 2) | dual hybrid | 360 | 105.1 | 134.5 |
-| Selector LWE (Tier 1) | uSVP | 357 | 104.2 | 132.8 |
+| Selector RLWE (Tier 2, binding) | uSVP | 356 | 104.0 | 132.6 |
+| Selector RLWE (Tier 2) | dual hybrid | 360 | 105.1 | 134.5 |
+| Selector RLWE (Tier 1) | uSVP | 357 | 104.2 | 132.8 |
 | Packing-key RLWE ($m = 33$) | all | — | $\infty$ | $\infty$ |
 
-For Instance B, 33 samples are insufficient for any known lattice
-attack; the estimator reports infinite cost under both models.
+For the packing-key RLWE instance, 33 samples are insufficient for
+any known lattice attack; the estimator reports infinite cost under
+both models.
 
-The binding case is Instance A at Tier 2, where the uSVP attack with
+The binding case is the selector at Tier 2, where the uSVP attack with
 block size $\beta = 356$ gives the lowest cost: $2^{104.0}$ under
 Core-SVP and $2^{132.6}$ under MATZOV.
 
@@ -2001,6 +2004,13 @@ FAQ [^NIST-Kyber-FAQ] explains that Core-SVP does not account for the
 full cost of the BKZ algorithm, memory access overhead, or hidden
 constant factors in sieving.
 
+The structural parallel extends beyond parameter sizes: Kyber's
+security is based on Module-LWE (rank $k = 2$), while the PIR
+selector is Ring-LWE (rank $k = 1$, a special case of Module-LWE).
+Both are evaluated by applying the lattice estimator to the
+corresponding LWE parameters — the standard methodology for all
+structured-LWE variants over power-of-2 cyclotomics.
+
 The purpose of this comparison is not to invoke NIST's authority
 for the PIR parameters — NIST evaluated Kyber for a different use
 case and the adequacy of Kyber512's security margins is itself
@@ -2044,7 +2054,7 @@ The corrections are cumulative:
    overhead.
 
 Accordingly, the 125-bit classical-security target is met for the
-modeled selector LWE instance under the MATZOV cost model, and remains
+selector Ring-LWE instance under the MATZOV cost model, and remains
 above 125 bits under the additional heuristic calibrations discussed in
 this section. This ZIP does not claim that every cost model more
 realistic than bare $2^{0.292\beta}$ yields a bound above 125 bits for
@@ -2075,9 +2085,11 @@ stddev $\approx 64$–$100$, which is impractical for the noise budget
 
 ### Security Assessment
 
-For the unstructured Tier 2 selector instance, the
-binding estimate is 132.6 bits under the MATZOV cost model and 104.0
-bits under the Core-SVP cost model.
+The selector instance relies on Ring-LWE hardness over
+$\mathbb{Z}_q[X]/(X^{2048}+1)$, evaluated using the same
+lattice-estimator methodology applied to ML-KEM. The binding estimate
+is 132.6 bits under the MATZOV cost model and 104.0 bits under
+Core-SVP, meeting the 125-bit target under MATZOV-style modeling.
 
 This ZIP therefore treats the 125-bit classical-security target as
 satisfied under the MATZOV-style attack-cost model used throughout this
@@ -2087,11 +2099,9 @@ construction. The Kyber512 comparison and the cost-model ladder in
 calibration arguments supporting that modeling choice; they are not
 independent hardness proofs for this PIR instance.
 
-In addition, the overall privacy argument relies on the structured
-selector assumption described above and on the circular-security / KDM
-assumption for the packing key described in [Circular Security]. The
-Hardness Estimates quantify the modeled selector LWE instance; they do
-not quantify those additional assumptions.
+The overall privacy argument additionally relies on the
+circular-security / KDM assumption for the packing key described in
+[Circular Security]. The hardness estimates do not quantify this assumption; no attack is known that exploits the KDM structure at these parameter sizes.
 
 ### Quantum Security Estimates
 
@@ -2349,7 +2359,7 @@ current row size this yields approximately 48 GB, still within the
 The YPIR paper [^YPIR] targets 128-bit computational security with
 correctness error at most $2^{-40}$ for this parameter family. The
 independent analysis in [Noise Analysis] supports the following
-model-qualified conclusion for this ZIP: for the modeled selector LWE
+model-qualified conclusion for this ZIP: for the selector Ring-LWE
 instance, the binding estimate is 132.6 bits under MATZOV and 104.0
 bits under Core-SVP (see [Hardness Estimates]), while the stage-by-stage
 noise budget yields a correctness error of $\leq 2^{-66}$ (see
