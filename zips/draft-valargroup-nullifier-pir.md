@@ -1819,20 +1819,20 @@ While the Selector LWE instance is an LWE problem, it is derived from negacyclic
 
 We analyze the hardness of Ring-LWE as an LWE problem, since, so far, the best known attacks do not make use of the ring structure [^Kyber-CoreSVP] [^NewHope].
 
-We acknowledge that algebraic attacks, attacks exploiting the ring or
-module structure rather than treating the problem as unstructured LWE, are
-an active area of research. The Kyber specification discusses the current
-state of the art in Section 5.3.1 [^Kyber], noting that recent quantum
-algorithms against Ideal-SVP [^CDW2021] do not extend to Ring-LWE, and
-that Module-LWE (which Kyber uses) plausibly creates additional obstacles.
-No known algebraic attack achieves better concrete cost than lattice
-reduction against unstructured LWE at comparable parameters.
+We acknowledge that there exist algebraic attacks that exploit the ring or
+module structure rather than treating the problem as unstructured LWE. This is
+an active area of research (see Kyber specification Section
+5.3.1 [^Kyber]). Recent quantum algorithms for Ideal-SVP [^CDW2017]
+[^PHS2019] achieve approximation factors far too large to threaten
+Ring-LWE at cryptographic parameters; the quantitative gap is detailed
+below. No known algebraic attack achieves better concrete cost than
+lattice reduction against unstructured LWE at comparable parameters. 
 
 The argument chains together as follows. The worst-case reduction of
 Lyubashevsky, Peikert, and Regev [^LPR2013] establishes that breaking
 Ring-LWE requires solving worst-case Ideal-SVP with approximation factor
 $\gamma = \text{poly}(n)$. The best known quantum algorithms for
-Ideal-SVP, due to Cramer, Ducas, and Wesolowski [^CDW2021] and
+Ideal-SVP, due to Cramer, Ducas, and Wesolowski [^CDW2017] and
 Pellet-Mary, Hanrot, and Stehlé [^PHS2019], achieve only
 $\gamma = \exp(\tilde{O}(\sqrt{n}))$. Experimental analysis by Ducas,
 Plançon, and Wesolowski [^DPW2019] confirms that the effective
@@ -1843,6 +1843,9 @@ approximation factor is $\text{poly}(2048) \approx 10^{3}\text{--}10^{20}$
 $\exp(\tilde{O}(\sqrt{2048})) \approx \exp(\tilde{O}(45))$. This is many
 orders of magnitude larger. The gap between what an attacker would need
 and what these algorithms can deliver remains enormous.
+
+The same methodology is used by NIST for evaluating ML-KEM (Kyber),
+which relies on Module-LWE over the same family of rings [^NIST-Kyber-FAQ].
 
 #### Structured Selector Instance
 
@@ -1879,14 +1882,7 @@ $2048 \times 262\,144$ matrix.
 
 The hardness estimates in [Hardness Estimates] apply the lattice
 estimator to the LWE parameters $(n, q, \sigma, m)$ corresponding to
-this instance. This follows the standard methodology for evaluating
-structured LWE instances: for power-of-2 cyclotomic rings,
-no attack is known that achieves better concrete cost against the
-structured problem than against unstructured LWE at comparable
-parameters (see Peikert [^Peikert2016] and
-Lyubashevsky–Peikert–Regev [^LPR2013]). The same methodology is used
-by NIST for evaluating ML-KEM (Kyber), which relies on Module-LWE
-over the same family of rings [^NIST-Kyber-FAQ].
+this instance, following the methodology described in [Methodology].
 
 The selector secret $\mathbf{s}$ is the coefficient vector of the
 fresh RLWE secret $s^\star$ sampled in [Client Key Generation]. A
@@ -2897,7 +2893,7 @@ three-tier Poseidon tree, the Tier 1 / Tier 2 query orchestration described in t
 
 [^Kyber-CoreSVP]: [CRYSTALS – Kyber, Section 6: Core-SVP hardness](https://eprint.iacr.org/2017/634.pdf). Bos et al., 2018.
 
-[^CDW2021]: [Short Stickelberger Class Relations and Application to Ideal-SVP](https://eprint.iacr.org/2016/885.pdf). Ronald Cramer, Léo Ducas, and Benjamin Wesolowski. Advances in Cryptology – EUROCRYPT 2017, pp. 324–348.
+[^CDW2017]: [Short Stickelberger Class Relations and Application to Ideal-SVP](https://eprint.iacr.org/2016/885.pdf). Ronald Cramer, Léo Ducas, and Benjamin Wesolowski. Advances in Cryptology – EUROCRYPT 2017, pp. 324–348.
 
 [^PHS2019]: [Approx-SVP in Ideal Lattices with Pre-processing](https://eprint.iacr.org/2019/215.pdf). Alice Pellet-Mary, Guillaume Hanrot, and Damien Stehlé. Advances in Cryptology – EUROCRYPT 2019, pp. 685–716.
 
