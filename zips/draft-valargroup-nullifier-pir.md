@@ -1689,7 +1689,9 @@ Tier 1 response MUST NOT be allowed to prevent the Tier 2 query from being
 sent. See [Rationale for Query Completion Requirement] for the attack
 that motivates this requirement.
 
-## Noise Analysis
+# Rationale
+
+## Security Analysis
 
 The YPIR+SP construction relies on three distinct cryptographic
 hardness instances. An adversary who breaks any one of them can
@@ -1972,6 +1974,52 @@ The cost model ladder in [Cost Model Analysis] further shows that
 adding memory-access overhead (the $k = 2$ regime NIST considers most
 realistic) raises the PIR estimate to ~146 bits.
 
+### Quantum Security Estimates
+
+LWE and RLWE are not susceptible to Shor's algorithm. The primary
+quantum speedup for lattice problems comes from Grover-accelerated
+sieving [^LaaMosPol2015], which reduces the per-call SVP cost
+exponent from $0.292\beta$ (classical) to $0.265\beta$ (quantum).
+The lattice estimator [^Albrecht2015] implements this as the ADPS16
+quantum cost model. For the binding instance ($\beta = 356$):
+
+| Cost model | Bits | Assumption |
+|---|---|---|
+| Classical Core-SVP ($0.292\beta$) | 104.0 | — |
+| Quantum Core-SVP ($0.265\beta$) | 94.3 | Unit-cost QRAM |
+| Classical MATZOV (estimator) | 132.6 | Free classical memory |
+
+The 94.3-bit quantum Core-SVP estimate is a single-oracle lower
+bound, analogous to the classical 104-bit figure. In the classical
+setting, the gap between Core-SVP and MATZOV is 28.6 bits,
+reflecting progressive BKZ overhead, sieving constants, and memory
+access costs absent from the bare $2^{0.292\beta}$ formula. The
+lattice estimator's MATZOV model supports a quantum
+nearest-neighbor variant (depth $\times$ width metric) that
+preserves the BKZ algorithmic structure while substituting quantum
+sieve calls; this variant is expected to produce an analogous gap
+above the quantum Core-SVP floor.
+
+The Kyber512 calibration from [Kyber512 Calibration] extends
+directly to the quantum setting. The block-size ratio
+$356/406 \approx 0.88$ is cost-model-independent:
+
+| Instance | $\beta$ (uSVP) | Classical Core-SVP | Quantum Core-SVP ($0.265\beta$) |
+|---|---|---|---|
+| Kyber512 | 406 | 115.5 | 107.6 |
+| PIR Tier 2 (binding) | 356 | 104.0 | 94.3 |
+
+NIST selected Kyber512 as PQC Category 1 (security equivalent to
+AES-128 against quantum adversaries) despite its quantum Core-SVP
+estimate of 107.6 bits, because Core-SVP omits substantial overhead
+factors [^NIST-Kyber-FAQ]. By the same reasoning, the PIR
+parameters — at 88% of Kyber512's block size — are consistent with
+the characterization in [Abstract] as plausibly post-quantum.
+
+The quantum Core-SVP estimate assumes unit-cost quantum random
+access memory (QRAM). Without efficient QRAM, the quantum sieving
+advantage is reduced and estimates approach the classical values.
+
 ### Correctness Noise Budget
 
 Decryption succeeds when the noise in every plaintext slot is less
@@ -2118,10 +2166,7 @@ $$\Pr[\text{any slot fails}]
 
 This is well below the $2^{-40}$ correctness target.
 
-
-# Rationale
-
-## Noise Recurrence
+#### Noise Recurrence
 
 The [Correctness Noise Budget] uses the conservative recurrence
 $V_\ell = 4 V_{\ell-1} + V_\text{ks}$, which treats the four noise
@@ -2136,7 +2181,7 @@ $< 2^{-62\,000}$. Both recurrences satisfy the $2^{-40}$ correctness
 bound by a wide margin; the conservative choice was made to avoid
 relying on the correlation argument.
 
-## Cross-Check Against the YPIR Paper
+#### Security Analysis Cross-Check Against the YPIR Paper
 
 The YPIR paper's correctness proof (Theorem 3.4, Appendix C) analyzes
 the default YPIR variant (DoublePIR-based). This ZIP uses YPIR+SP,
@@ -2619,6 +2664,7 @@ queries are always transmitted, regardless of any failure at the
 cryptographic, decoding, or application layer while processing the
 Tier 1 response.
 
+
 # Deployment
 
 This section will be completed before this ZIP advances to Proposed
@@ -2665,6 +2711,8 @@ three-tier Poseidon tree, the Tier 1 / Tier 2 query orchestration described in t
 [^Peikert2016]: [A Decade of Lattice Cryptography](https://doi.org/10.1561/0400000074). Chris Peikert. Foundations and Trends in Theoretical Computer Science 10(4):283–424, 2016.
 
 [^LPR2013]: [On Ideal Lattices and Learning with Errors over Rings](https://doi.org/10.1007/s00145-012-9140-y). Vadim Lyubashevsky, Chris Peikert, and Oded Regev. Journal of the ACM 60(6):43:1–43:35, 2013.
+
+[^LaaMosPol2015]: [Finding shortest lattice vectors faster using quantum search](https://doi.org/10.1007/s10623-015-0067-5). Thijs Laarhoven, Michele Mosca, and Joop van de Pol. Designs, Codes and Cryptography 77(2-3):375–400, 2015.
 
 [^MATZOV2022]: [Report on the Security of LWE: Improved Dual Lattice Attack](https://zenodo.org/records/6412487). MATZOV, April 2022.
 
