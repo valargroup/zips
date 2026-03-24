@@ -1230,7 +1230,7 @@ CRT-composing them.
 
 #### Expansion of $\mathsf{seed\_A}$ (Row-Selector Public Randomness)
 
-$\mathsf{seed\_A}$ defines the public randomness used by the deployed
+$\mathsf{seed\_A}$ defines the public randomness used by the
 row-selector query. No alternate stream selection or nonce-derived
 domain separation is applied.
 
@@ -1782,7 +1782,7 @@ deviation $6.4$. The secret and error distributions are identical
 
 ### Selector LWE
 
-The deployed selector $c$ defined in [Regev Encryption] constitutes an
+The selector $c$ defined in [Regev Encryption] constitutes an
 LWE instance. An adversary who observes the public matrix $A$ and the
 selector vector $c$ obtains $m$ LWE samples of the form
 
@@ -1808,13 +1808,23 @@ $B = \lceil m/d \rceil$ negacyclic matrices, each derived from an
 independent ring element in
 $R_q = \mathbb{Z}_q[X]/(X^{2048}+1)$ expanded from
 $\mathsf{seed\_A}$, as specified in
-[Negacyclic Extraction of the Deployed Selector Matrix]. For Tier 2,
+[Negacyclic Extraction of the Selector Matrix]. For Tier 2,
 $B = 128$ independent ring elements determine the full
-$2048 \times 262\,144$ matrix. For the power-of-2 cyclotomic
-$X^{2048}+1$, the best known attacks against this structured
-(module-)LWE do not improve on attacks against unstructured LWE at the
-same dimension and modulus; see Peikert's survey [^Peikert2016] and
-Lyubashevsky–Peikert–Regev [^LPR2013].
+$2048 \times 262\,144$ matrix.
+
+The hardness estimates in [Hardness Estimates] are for ordinary
+(unstructured) LWE with the same $(n, q, \sigma, m)$ parameters. They
+are used here as a heuristic proxy for the selector instance,
+whose public matrix is instead generated from $\mathsf{seed\_A}$ with
+negacyclic structure. For the power-of-2 cyclotomic ring
+$X^{2048}+1$, no attack is known that gives a better concrete cost for
+this seeded negacyclic/module-LWE-style distribution than for ordinary
+LWE at comparable parameters; see Peikert's survey [^Peikert2016] and
+Lyubashevsky–Peikert–Regev [^LPR2013]. However, this ZIP does not claim
+that the deployed selector reduces to ordinary LWE. Its privacy
+analysis therefore relies on the assumption that the structured
+selector generated from $\mathsf{seed\_A}$ is not easier to break than
+the corresponding ordinary LWE instance at the stated parameters.
 
 The selector secret $\mathbf{s}$ is the coefficient vector of the
 fresh RLWE secret $s^\star$ sampled in [Client Key Generation]. A
