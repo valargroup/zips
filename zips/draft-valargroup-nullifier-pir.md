@@ -1779,8 +1779,9 @@ assumptions and one modeling assumption:
 
 1. **Selector RLWE.** Ring-LWE hardness for the seeded negacyclic
    selector matrix used in query generation (the secret is a single
-   ring element, so the selector is an RLWE instance with $B$
-   samples). Breaking this compromises query privacy.
+   ring element, so the selector is an RLWE instance with
+   $B = \lceil m/d \rceil$ samples, where $m$ is the padded row count
+   and $d$ the ring degree). Breaking this compromises query privacy.
 2. **Packing-key RLWE.** Standard RLWE hardness for the packing-key
    ciphertexts. Because the packing key is encrypted under the same
    $s^\star$ that determines the selector secret, breaking this also
@@ -2020,7 +2021,9 @@ both models.
 The binding case is the Tier 2 selector. Under Core-SVP the cheapest
 attack is uSVP at $\beta = 356$, giving $2^{104.0}$ bits. Under
 Matzov the cheapest attack is BDD at $\beta = 351$, giving
-$2^{131.5}$ bits.
+$2^{131.5}$ bits. The gap between these two figures is a structural
+feature of the cost models, not specific to this parameter set; see
+[Kyber512 Calibration] and [Cost Model Analysis] for context.
 
 ### Comparison with YPIR Paper
 
@@ -2146,7 +2149,7 @@ The following table shows how bit-security varies with the noise
 standard deviation (all other parameters fixed at $n = 2048$,
 $q \approx 2^{55.9}$, $m = 262\,144$):
 
-| Stddev | Width $\sigma$ | Core-SVP (bits) | Matzov (bits) | Core $\geq 125$ | Matzov $\geq 125$ |
+| Stddev $s$ | Gaussian width $s\sqrt{2\pi}$ | Core-SVP (bits) | Matzov (bits) | Core $\geq 125$ | Matzov $\geq 125$ |
 |---|---|---|---|---|---|
 | 3.2 | 8.0 | 98.4 | 126.4 | no | yes |
 | **6.4** | **16.0** | **104.0** | **131.5** | **no** | **yes** |
@@ -2234,9 +2237,14 @@ advantage is reduced and estimates approach the classical values.
 NIST selected Kyber512 as PQC Category 1 (security equivalent to
 AES-128 against quantum adversaries) despite its quantum Core-SVP
 estimate of 106.3 bits, because Core-SVP omits substantial overhead
-factors [^NIST-Kyber-FAQ]. By the same reasoning, the PIR
-parameters, at 88% of Kyber512's uSVP block size, are consistent
-with the characterization in [Abstract] as plausibly post-quantum.
+factors [^NIST-Kyber-FAQ]. By the same cost-model reasoning that
+applies to ML-KEM, namely, that bare Core-SVP understates the true
+attack cost by omitting BKZ overhead, sieving constants, and memory
+access costs, the PIR parameters, at 88% of Kyber512's uSVP block
+size, are consistent with the characterization in [Abstract] as
+plausibly post-quantum. Whether the classical gap between Core-SVP
+and Matzov has a quantum analog remains an open question; no quantum
+Matzov-style estimate is produced in this analysis.
 
 ## Correctness Analysis
 
