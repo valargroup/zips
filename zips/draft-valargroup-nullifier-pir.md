@@ -2090,32 +2090,42 @@ attack is BDD ($\beta = 351$). This subsection provides heuristic
 calibration for interpreting the estimator outputs; it is not an
 independent hardness proof:
 
-| Cost model | Est. bits | Notes |
+| Cost model | Est. bits | Derivation |
 |---|---|---|
-| Core-SVP (ADPS16, $0.292\beta$) | 104 | uSVP $\beta = 356$; simplified, omits factors in both directions |
-| MATZOV (estimator) | 131.5 | BDD $\beta = 351$; progressive BKZ + refined NN; assumes free memory |
-| MATZOV + hidden overheads | ~135–137 | Ducas 2022 [^Ducas2022] correction (+3–5 bits) |
-| MATZOV + $k{=}2$ memory | ~145 | NIST best guess (cube-root memory access) |
-| MATZOV + $k{=}1$ memory | ~152 | Conservative (BGJ1 square-root memory) |
+| Core-SVP (ADPS16, $0.292\beta$) | 104 | uSVP $\beta = 356$; single sieve call, no BKZ overhead |
+| MATZOV (estimator) | 131.5 | BDD $\beta = 351$; progressive BKZ + refined NN; free memory |
+| MATZOV + hidden overheads | ~135–137 | $131.5 + 3\text{–}5$ (Ducas 2022 [^Ducas2022] correction) |
+| MATZOV + memory ($k{=}2$) | ~145 | $131.5 + 13.1$ (cube-root memory access) |
+| MATZOV + memory ($k{=}1$) | ~152 | $131.5 + 20.0$ (BGJ1 square-root memory) |
+| All corrections stacked ($k{=}2$) | ~148–150 | $131.5 + 3\text{–}5 + 13.1$ |
 
-The corrections are cumulative:
+Each row after MATZOV applies one independent correction to the
+MATZOV baseline of 131.5 bits; the final row stacks all corrections.
+The three correction sources are:
 
 1. **MATZOV sieving refinements** (progressive BKZ, dimensions-for-free,
    refined nearest-neighbor costs [^MATZOV2022]): add ~27.5 bits over
-   Core-SVP for the binding instance. These refinements are from
-   Section 6 of the MATZOV report and are independent of the
-   dual-sieve controversy (Ducas–Pulles 2023).
+   Core-SVP for the binding instance, producing the 131.5-bit MATZOV
+   baseline. These refinements are from Section 6 of the MATZOV report
+   and are independent of the dual-sieve controversy
+   (Ducas–Pulles 2023).
 
 2. **Hidden overheads** [^Ducas2022]: the BDGL sieving algorithm incurs
    an overhead of ~$2^6$ in practice compared to the idealized model,
    partially mitigable in the full attack. After mitigation this adds
-   ~3–5 bits.
+   ~3–5 bits on top of the MATZOV baseline.
 
 3. **Memory access costs**: the best sieving algorithms require
    exponentially many queries to exponentially large memory. Under
    NIST's $k = 2$ (cube-root) regime, each sieve call incurs an
    additional $(0.3294 - 0.292) \times \beta \approx 13.1$ bits of
-   overhead (using the MATZOV binding $\beta = 351$).
+   overhead (using the MATZOV binding $\beta = 351$). Under the more
+   conservative BGJ1 $k = 1$ (square-root) regime, the overhead is
+   $(0.349 - 0.292) \times \beta \approx 20.0$ bits.
+
+Corrections 2 and 3 address different aspects of the sieve cost
+(implementation constants vs. memory-access scaling) and are
+independent of each other.
 
 Accordingly, the 125-bit classical-security target is met for the
 selector Ring-LWE instance under the MATZOV cost model, and remains
@@ -2187,12 +2197,11 @@ The 94.3-bit quantum Core-SVP estimate is a single-oracle lower
 bound, analogous to the classical 104-bit figure. In the classical
 setting, the gap between Core-SVP and MATZOV is 27.5 bits,
 reflecting progressive BKZ overhead, sieving constants, and memory
-access costs absent from the bare $2^{0.292\beta}$ formula. The
-lattice estimator's MATZOV model supports a quantum
-nearest-neighbor variant (depth $\times$ width metric) that
-preserves the BKZ algorithmic structure while substituting quantum
-sieve calls; this variant is expected to produce an analogous gap
-above the quantum Core-SVP floor.
+access costs absent from the bare $2^{0.292\beta}$ formula. Whether
+an analogous gap exists in the quantum setting, where quantum sieve
+calls replace classical ones within the BKZ algorithmic structure,
+remains an open question; no quantum MATZOV estimate is produced in
+this analysis.
 
 The Kyber512 calibration from [Kyber512 Calibration] extends
 directly to the quantum setting. The block-size ratio
