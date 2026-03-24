@@ -56,7 +56,7 @@ if not (_ESTIMATOR_ROOT / "estimator").is_dir():
 sys.path.insert(0, str(_ESTIMATOR_ROOT))
 
 from estimator import LWE, ND, schemes  # noqa: E402
-from estimator.lwe_primal import primal_usvp  # noqa: E402
+from estimator.lwe_primal import primal_usvp, primal_bdd  # noqa: E402
 from estimator.lwe_dual import matzov as dual_hybrid  # noqa: E402
 from estimator.reduction import RC  # noqa: E402
 from estimator.util import batch_estimate, f_name  # noqa: E402
@@ -86,15 +86,16 @@ MODELS = [
 
 
 def estimate_rough(par, cost_model):
-    """Run primal-uSVP and dual-hybrid attacks under a single cost model.
+    """Run uSVP, BDD, and dual-hybrid attacks under a single cost model.
 
-    Uses the GSA (Geometric Series Assumption) shape model for the uSVP
-    attack and the MATZOV dual-hybrid formulation for the dual attack.
+    Uses the GSA (Geometric Series Assumption) shape model for the primal
+    attacks and the MATZOV dual-hybrid formulation for the dual attack.
     Returns a dict mapping attack name to the estimator result object.
     """
     params = par.normalize()
     algorithms = {
         "usvp": partial(primal_usvp, red_cost_model=cost_model, red_shape_model="gsa"),
+        "bdd": partial(primal_bdd, red_cost_model=cost_model, red_shape_model="gsa"),
         "dual_hybrid": partial(dual_hybrid, red_cost_model=cost_model),
     }
     res_raw = batch_estimate(
@@ -110,21 +111,24 @@ def estimate_rough(par, cost_model):
 
 
 def extract_results(result):
-    """Extract minimum bit-security and uSVP block size from estimator output.
+    """Extract minimum bit-security and block sizes from estimator output.
 
     Returns (bits, beta) where bits = log2(min rop across attacks) and
-    beta is the BKZ block size from the uSVP attack (if available).
+    beta is the BKZ block size from the cheapest primal attack (uSVP or
+    BDD, whichever has lower rop).
     """
     bits = None
     beta = None
     rops = []
+    best_primal_rop = float("inf")
     for alg, v in result.items():
         try:
             r = float(v["rop"])
             rops.append(r)
-            if alg == "usvp":
+            if alg in ("usvp", "bdd") and r < best_primal_rop:
+                best_primal_rop = r
                 try:
-                    beta = int(v["β"])
+                    beta = int(v["beta"])
                 except (TypeError, KeyError):
                     pass
         except (TypeError, KeyError):
@@ -165,9 +169,23 @@ def print_kyber_calibration():
         bits, beta = extract_results(res)
         kyber_results[model_name] = (bits, beta)
 
-    # PIR Tier 2 binding results (from pir_lwe_cost_models.py runs;
-    # hardcoded here since they are stable across estimator commits).
-    pir_beta = 356
+    pir_par = LWE.Parameters(
+        n=N, q=Q,
+        Xs=ND.DiscreteGaussian(STDDEV),
+        Xe=ND.DiscreteGaussian(STDDEV),
+        m=M_TIER2,
+        tag="PIR Tier 2",
+    )
+
+    pir_results = {}
+    for model_name, model in MODELS:
+        print(f"\n  [PIR Tier 2 — {model_name}]")
+        res = estimate_rough(pir_par, model)
+        for alg in res:
+            if res[alg]["rop"] != oo:
+                print(f"    {alg:20s} :: {res[alg]!r}")
+        bits, beta = extract_results(res)
+        pir_results[model_name] = (bits, beta)
 
     print()
     print("  COMPARISON TABLE:")
@@ -179,23 +197,30 @@ def print_kyber_calibration():
     kyber_core = kyber_results.get("Core-SVP (ADPS16)", (None, None))[0]
     kyber_matzov = kyber_results.get("MATZOV 2022", (None, None))[0]
 
+    pir_beta = pir_results.get("Core-SVP (ADPS16)", (None, None))[1]
+    pir_core = pir_results.get("Core-SVP (ADPS16)", (None, None))[0]
+    pir_matzov = pir_results.get("MATZOV 2022", (None, None))[0]
+
     kb_str = str(kyber_beta) if kyber_beta else "N/A"
     kc_str = f"{kyber_core:.1f}" if kyber_core else "N/A"
     km_str = f"{kyber_matzov:.1f}" if kyber_matzov else "N/A"
     print(f"  │ Kyber512                 │ {kb_str:>12s} │ {kc_str:>12s} │ {km_str:>12s} │     1.00     │")
 
-    ratio = f"{pir_beta / kyber_beta:.2f}" if kyber_beta else "N/A"
-    print(f"  │ PIR Tier 2 (binding)     │ {pir_beta:>12d} │ {104.0:>12.1f} │ {132.6:>12.1f} │ {ratio:>12s} │")
+    pb_str = str(pir_beta) if pir_beta else "N/A"
+    pc_str = f"{pir_core:.1f}" if pir_core else "N/A"
+    pm_str = f"{pir_matzov:.1f}" if pir_matzov else "N/A"
+    ratio = f"{pir_beta / kyber_beta:.2f}" if (pir_beta and kyber_beta) else "N/A"
+    print(f"  │ PIR Tier 2 (binding)     │ {pb_str:>12s} │ {pc_str:>12s} │ {pm_str:>12s} │ {ratio:>12s} │")
     print("  └───────────────────────────┴──────────────┴──────────────┴──────────────┴──────────────┘")
 
-    if kyber_beta:
-        print(f"\n  β ratio: {pir_beta}/{kyber_beta} = {pir_beta/kyber_beta:.3f}")
+    if pir_beta and kyber_beta:
+        print(f"\n  uSVP β ratio: {pir_beta}/{kyber_beta} = {pir_beta/kyber_beta:.3f}")
         print("  (cost-model-independent measure of relative security)")
 
-    return kyber_beta
+    return kyber_beta, pir_results
 
 
-def print_cost_model_ladder(kyber_beta):
+def print_cost_model_ladder(kyber_beta, pir_results):
     """Analytical cost model ladder for the binding block size.
 
     Follows the NIST Kyber-512 FAQ (Dec 2023) methodology.  The sieving
@@ -212,19 +237,27 @@ def print_cost_model_ladder(kyber_beta):
     corrections are additive on top of MATZOV:
       delta = (c(k) - 0.292) * beta   extra bits per sieve call
     """
+    pir_core_beta = pir_results.get("Core-SVP (ADPS16)", (None, None))[1]
+    pir_matzov_bits = pir_results.get("MATZOV 2022", (None, None))[0]
+    pir_matzov_beta = pir_results.get("MATZOV 2022", (None, None))[1]
+    core_beta = pir_core_beta or 356
+    mat_beta = pir_matzov_beta or core_beta
+    matzov_bits = pir_matzov_bits or 131.5
+
     print()
     print("=" * 72)
-    print("COST MODEL LADDER (β = 356)")
+    print(f"COST MODEL LADDER (Core-SVP β = {core_beta}, MATZOV β = {mat_beta})")
     print("=" * 72)
 
-    beta = 356
-    core_svp = 0.292 * beta
-    k1_bits = 0.349 * beta
-    k2_bits = 0.3294 * beta
-    k3_bits = 0.3198 * beta
-    matzov_bits = 132.6
+    core_svp = 0.292 * core_beta
+    k1_bits = 0.349 * core_beta
+    k2_bits = 0.3294 * core_beta
+    k3_bits = 0.3198 * core_beta
     matzov_hidden_lo = matzov_bits + 3
     matzov_hidden_hi = matzov_bits + 5
+
+    mat_k2 = matzov_bits + (0.3294 - 0.292) * mat_beta
+    mat_k1 = matzov_bits + (0.349 - 0.292) * mat_beta
 
     print(f"""
   ┌──────────────────────────────────────────┬─────────────┬──────────────────────────────────────┐
@@ -236,6 +269,8 @@ def print_cost_model_ladder(kyber_beta):
   │ Memory k=1 / BGJ1 (0.349β)             │ {k1_bits:>9.1f}   │ Conservative (square-root)           │
   │ MATZOV (estimator)                      │ {matzov_bits:>9.1f}   │ Progressive BKZ + refined NN         │
   │ MATZOV + hidden overheads               │  {matzov_hidden_lo:.0f}–{matzov_hidden_hi:.0f}   │ Ducas 2022 correction (+3–5 bits)    │
+  │ MATZOV + k=2 memory                     │  ~{mat_k2:.0f}     │ NIST best guess (cube-root)          │
+  │ MATZOV + k=1 memory                     │  ~{mat_k1:.0f}     │ Conservative (BGJ1 square-root)      │
   └──────────────────────────────────────────┴─────────────┴──────────────────────────────────────┘""")
 
     if kyber_beta:
@@ -316,8 +351,8 @@ def main():
     except (OSError, subprocess.CalledProcessError):
         pass
 
-    kyber_beta = print_kyber_calibration()
-    print_cost_model_ladder(kyber_beta)
+    kyber_beta, pir_results = print_kyber_calibration()
+    print_cost_model_ladder(kyber_beta, pir_results)
     print_sensitivity_sweep()
 
 
