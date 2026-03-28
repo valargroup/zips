@@ -86,8 +86,6 @@ using the wire formats in this specification. Proof construction is
 specified in companion ZIPs.
 - A wallet can submit encrypted vote shares to helper servers and
 confirm their on-chain inclusion.
-- The API supports version negotiation so that wallets and servers can
-evolve independently.
 
 # Non-requirements
 
@@ -96,6 +94,92 @@ evolve independently.
 - Round creation and governance authority operations.
 - The internal implementation of helper servers (specified in
 [^submission-server]).
+
+# High level summary
+
+This section is non-normative.
+
+This section provides an informational overview of the end-to-end
+sequence a wallet follows to participate in a shielded voting round.
+Each step references the normative section that specifies its details.
+All requirements use the language defined in those sections.
+
+## Phase 1: Discovery and Validation
+
+1. **Obtain vote configuration.** Fetch or receive the vote
+   configuration JSON document for the round.
+   See [Vote Configuration Format].
+
+2. **Validate configuration.** Check all fields against the rules in
+   [Validation Rules] and verify version compatibility per
+   [Compatibility Rules]. Reject the configuration and stop if any
+   check fails.
+
+3. **Fetch active round from chain.** Query `GET /shielded-vote/v1/rounds/active`
+   to confirm the round is ACTIVE and retrieve on-chain parameters:
+   `ea_pk`, `nullifier_imt_root`, `nc_root`, and `proposals_hash`.
+   See [Active Round].
+
+4. **Verify proposals hash.** Compute the proposals hash from the
+   configuration's `proposals` array and compare it to `proposals_hash`
+   from the chain response. See [Proposals Hash].
+
+## Phase 2: Delegation
+
+5. **Retrieve nullifier exclusion proofs.** Connect to a
+   `pir_endpoints` server and retrieve Merkle non-membership proofs
+   for the wallet's Orchard note nullifiers at `snapshot_height`.
+   See [Nullifier Retrieval] and [^nullifier-pir].
+
+6. **Construct and submit delegation transaction.** Build the ZKP1
+   proof (proving Orchard note ownership at the snapshot height) and
+   submit via `POST /shielded-vote/v1/delegate-vote`.
+   See [Delegation Transaction] and [^orchard-balance-proof].
+
+7. **Poll for delegation confirmation.** Poll
+   `GET /shielded-vote/v1/tx/{hash}` using the `tx_hash` from the
+   submission response until the response includes a non-empty `height`
+   and `code` = 0. See [Confirmation Polling].
+
+8. **Sync commitment tree and locate VAN.** Query the
+   [Commitment Tree Leaves] endpoint to incrementally sync the local
+   tree. Identify the wallet's vote authority note by its commitment
+   `van_cmx` computed during step 6.
+
+## Phase 3: Voting (repeat for each proposal)
+
+9. **Construct and submit vote commitment.** Build the ZKP2 proof
+   (consuming the current VAN and producing a new VAN) and submit
+   via `POST /shielded-vote/v1/cast-vote`. The tree root at the
+   anchor height is a public input to this proof.
+   See [Vote Commitment Transaction] and [^voting-protocol].
+
+10. **Poll for vote commitment confirmation.** Poll
+    `GET /shielded-vote/v1/tx/{hash}` until confirmed.
+
+11. **Sync commitment tree.** Query [Commitment Tree Leaves] again
+    to locate the new VAN (needed as input for the next proposal)
+    and the vote commitment leaf (needed for share construction).
+
+12. **Construct and submit shares.** Build 16 encrypted share
+    payloads and submit each to a helper server via
+    `POST /shielded-vote/v1/shares`. Each share references the
+    `tree_position` of the vote commitment leaf from step 11.
+    See [Share Delegation] and [^submission-server].
+
+13. **Poll share statuses.** For each submitted share, poll
+    `GET /shielded-vote/v1/share-status/{roundId}/{nullifier}` until
+    all return `"confirmed"`. See [Share Status].
+
+Steps 9 through 13 are repeated sequentially for each proposal in
+the round. Each iteration consumes the current VAN and produces a
+new one, so proposals cannot be voted on in parallel.
+
+## Phase 4: Results (optional)
+
+14. **View tally results.** After the round reaches FINALIZED status,
+    query `GET /shielded-vote/v1/tally-results/{round_id}` for
+    decrypted per-proposal tallies. See [Tally Results].
 
 # Specification
 
@@ -113,14 +197,11 @@ participate in the round.
   "vote_round_id": "<hex, 64 characters>",
   "title": "Round 1: Protocol Upgrade",
   "description": "Vote on the proposed protocol upgrade.",
-  "chain_endpoints": [
+  "vote_servers": [
     {"url": "https://vote1.example.com", "label": "validator-1"}
   ],
   "pir_endpoints": [
     {"url": "https://pir1.example.com", "label": "pir-1"}
-  ],
-  "helper_endpoints": [
-    {"url": "https://helper1.example.com", "label": "helper-1"}
   ],
   "snapshot_height": 2800000,
   "vote_end_time": 1735689600,
@@ -137,8 +218,7 @@ participate in the round.
   "supported_versions": {
     "pir": ["v0", "v1"],
     "vote_circuits": "v0",
-    "tally_method": "v0",
-    "wallet_api": "v1"
+    "vote_server": "v1"
   }
 }
 ```
@@ -152,16 +232,14 @@ participate in the round.
 | `vote_round_id`                    | string           | Hex-encoded 32-byte vote round identifier (64 characters, lowercase).                                                       |
 | `title`                            | string           | Short human-readable title for the vote round.                                                                              |
 | `description`                      | string           | Human-readable description of the vote round.                                                                               |
-| `chain_endpoints`                  | array            | One or more chain REST API base URLs. Each entry has `url` (string) and `label` (string).                                   |
+| `vote_servers`                     | array            | One or more vote server base URLs serving both chain and helper endpoints. Each entry has `url` (string) and `label` (string). |
 | `pir_endpoints`                    | array            | One or more nullifier PIR server base URLs. Each entry has `url` and `label`.                                               |
-| `helper_endpoints`                 | array            | One or more helper server base URLs. Each entry has `url` and `label`.                                                      |
 | `snapshot_height`                  | integer          | Zcash block height at which the Orchard pool snapshot was taken.                                                            |
 | `vote_end_time`                    | integer          | Unix timestamp (seconds) after which votes are no longer accepted.                                                          |
 | `proposals`                        | array            | Ordered list of proposals. Each has `id` (integer, 1-indexed), `title` (string), and `options` (array of `{index, label}`). |
 | `supported_versions.pir`           | array of strings | PIR retrieval scheme versions supported by the servers (e.g., `["v0", "v1"]`).                                              |
 | `supported_versions.vote_circuits` | string           | Vote circuit version (e.g., `"v0"`).                                                                                        |
-| `supported_versions.tally_method`  | string           | Tally method version (e.g., `"v0"`).                                                                                        |
-| `supported_versions.wallet_api`    | string           | Wallet API version defined by this ZIP (e.g., `"v1"`).                                                                      |
+| `supported_versions.vote_server`   | string           | Vote server version covering the REST API and tally method (e.g., `"v1"`).                                                  |
 
 
 ### Validation Rules
@@ -171,18 +249,18 @@ A wallet MUST validate the configuration before use:
 - `config_version` MUST be a version the wallet recognizes. This
 specification defines version 1.
 - `vote_round_id` MUST be exactly 64 lowercase hexadecimal characters.
-- `chain_endpoints` MUST contain at least one entry.
+- `vote_servers` MUST contain at least one entry.
 - `pir_endpoints` MUST contain at least one entry.
-- `helper_endpoints` MUST contain at least one entry.
 - `snapshot_height` MUST be greater than 0.
 - `proposals` MUST contain between 1 and 15 entries.
 - Each proposal MUST have between 2 and 8 options.
 - Proposal `id` values MUST be unique and in the range 1 to 15.
 - Option `index` values within a proposal MUST be unique and 0-indexed.
-- `supported_versions.wallet_api` MUST equal `"v1"`. A wallet MUST
-reject configurations with an unrecognized `wallet_api` version.
-- `supported_versions.pir` MUST contain at least one version that the
-wallet supports (all wallets MUST support `"v0"`).
+- The wallet MUST check version compatibility as specified in
+[Version Handling]. In summary: `supported_versions.vote_server` and
+`supported_versions.vote_circuits` MUST be recognized versions, and
+`supported_versions.pir` MUST contain at least one version the wallet
+supports.
 
 ### Distribution
 
@@ -198,9 +276,53 @@ The choice of distribution mechanism is outside the scope of this
 specification. Regardless of the mechanism, the wallet MUST validate the
 configuration as described above before using it.
 
+## Version Handling
+
+All version strings in `supported_versions` follow Semantic Versioning
+[^semver] and use the form `"v" MAJOR` (e.g., `"v0"`, `"v1"`). A
+wallet that supports major version N is compatible with any release
+N.x.y of that component.
+
+The `supported_versions` object contains three independently versioned
+axes: `pir` (array of strings), `vote_circuits` (string), and
+`vote_server` (string). `pir` is an array because multiple PIR schemes
+can coexist; the other two are single strings because the vote chain
+must agree on exactly one version per round.
+
+A wallet MUST reject the configuration if it does not support the
+advertised `vote_server` or `vote_circuits` version, or if
+`pir` contains no version it supports. If any check fails, the wallet
+MUST NOT proceed and SHOULD prompt the user to update.
+
+### URL Path Prefix
+
+REST endpoint paths include a version prefix (e.g.,
+`/shielded-vote/v1/`). The path version corresponds to the major
+version declared in `supported_versions.vote_server`. A `vote_server`
+value of `"v1"` uses the `/shielded-vote/v1/` prefix.
+
+### Forward Compatibility
+
+Wallets MUST ignore unrecognized fields in the vote configuration
+document and in API responses. This allows servers to ship minor and
+patch releases (new optional fields, bug fixes) without requiring a
+major version bump.
+
+A major version bump signals a breaking change: removed fields,
+changed semantics, or new required fields.
+
+### Relationship to `config_version`
+
+`config_version` versions the structure of the vote configuration JSON
+document itself (field names, types, nesting). `vote_server` versions
+the REST API behavior and tally semantics. The two can evolve
+independently: a structural change to the config schema (e.g., adding
+a new required top-level field) bumps `config_version`, while a change
+to endpoint behavior or tally method bumps `vote_server`.
+
 ## Data Query Endpoints
 
-All query endpoints are served relative to a `chain_endpoints` base URL
+All query endpoints are served relative to a `vote_servers` base URL
 from the vote configuration. Responses are JSON-serialized protobuf
 messages; byte fields are base64-encoded.
 
@@ -221,7 +343,7 @@ Returns the active voting round, if any.
 | `vote_round_id`      | base64 (32 bytes) | Round identifier.                                                    |
 | `snapshot_height`    | uint64            | Zcash snapshot block height.                                         |
 | `snapshot_blockhash` | base64 (32 bytes) | Zcash block hash at snapshot.                                        |
-| `proposals_hash`     | base64 (32 bytes) | Hash of the proposals array.                                         |
+| `proposals_hash`     | base64 (32 bytes) | SHA-256 hash of the proposals array (see [Proposals Hash]).          |
 | `vote_end_time`      | uint64            | Unix timestamp (seconds).                                            |
 | `nullifier_imt_root` | base64 (32 bytes) | Nullifier non-membership tree root.                                  |
 | `nc_root`            | base64 (32 bytes) | Orchard note commitment tree root.                                   |
@@ -243,6 +365,39 @@ here. See [^ea-ceremony] for details.
 The `proposals` field in the VoteRound response contains the same
 proposals as the vote configuration document. The `proposals_hash`
 field can be used to verify consistency between the two sources.
+
+### Proposals Hash
+
+The `proposals_hash` is the SHA-256 hash of the canonical JSON
+serialization of the `proposals` array from the vote configuration.
+Because the vote configuration is distributed out-of-band, this hash
+lets wallets verify that the proposals shown to the user match the
+proposals recorded on the vote chain.
+
+To compute the hash:
+
+1. Construct a JSON array containing each proposal object with exactly
+the fields `id` (integer), `title` (string), and `options` (array of
+`{index, label}` objects). Any other fields (e.g., `description`) MUST
+be excluded. Proposals are ordered by `id` ascending. Within each
+proposal, options are ordered by `index` ascending. Keys within each
+JSON object MUST appear in the following order:
+   - Proposal objects: `id`, `title`, `options`.
+   - Option objects: `index`, `label`.
+2. Serialize the array to JSON with no whitespace (no spaces after
+colons or commas, no newlines).
+3. Compute SHA-256 over the UTF-8 encoding of the resulting string.
+
+For example, given the vote configuration from [Vote Configuration
+Format], the preimage is:
+
+```
+[{"id":1,"title":"Approve protocol upgrade","options":[{"index":0,"label":"Support"},{"index":1,"label":"Oppose"}]}]
+```
+
+Wallets SHOULD verify that `proposals_hash` in the VoteRound response
+matches the hash computed from the vote configuration's `proposals`
+array before proceeding.
 
 If no active round exists, the response contains a `round` field with
 a null or empty value.
@@ -488,13 +643,13 @@ each share and submits it to the chain at the client-specified time.
 See [^submission-server] for the server-side processing pipeline and
 [^voting-protocol] for share construction.
 
-The following endpoints are served by helper servers (base URLs from
-`helper_endpoints` in the vote configuration), not the chain REST API.
+The following endpoints are served from the same `vote_servers` base
+URLs as the chain query endpoints.
 
 ### Submit Share
 
 ```
-POST /api/v1/shares
+POST /shielded-vote/v1/shares
 ```
 
 Submits a single encrypted vote share to a helper server.
@@ -508,7 +663,6 @@ Submits a single encrypted vote share to a helper server.
 | `proposal_id`   | uint32                          | Proposal identifier (1-indexed).                                                                                                                       |
 | `vote_decision` | uint32                          | Vote option index (0-indexed).                                                                                                                         |
 | `enc_share`     | object                          | Encrypted share (see below).                                                                                                                           |
-| `share_index`   | uint32                          | Share index (0 to 15).                                                                                                                                 |
 | `tree_position` | uint64                          | Vote commitment tree leaf index.                                                                                                                       |
 | `vote_round_id` | string (hex, 64 chars)          | Hex-encoded vote round identifier.                                                                                                                     |
 | `share_comms`   | array of base64 (32 bytes each) | 16 per-share Poseidon commitments.                                                                                                                     |
@@ -539,10 +693,18 @@ The `enc_share` object contains:
 | `error`  | string | Error description (present only on failure).               |
 
 
+### Share Nullifier
+
+Each submitted share has a deterministic nullifier derived from the
+vote commitment fields and the share's blinding factor. The wallet
+computes this nullifier locally and hex-encodes it (lowercase, 64
+characters) for use in the [Share Status] endpoint path. The
+derivation is specified in [^voting-protocol].
+
 ### Share Status
 
 ```
-GET /api/v1/share-status/{roundId}/{nullifier}
+GET /shielded-vote/v1/share-status/{roundId}/{nullifier}
 ```
 
 Polls whether a submitted share has been included on-chain.
@@ -550,7 +712,8 @@ Polls whether a submitted share has been included on-chain.
 **Path parameters:**
 
 - `roundId`: Hex-encoded 32-byte vote round identifier (64 characters).
-- `nullifier`: Hex-encoded 32-byte share nullifier (64 characters).
+- `nullifier`: Hex-encoded 32-byte share nullifier (64 characters),
+  computed as specified in [Share Nullifier].
 
 **Response body:**
 
@@ -569,40 +732,17 @@ Polls whether a submitted share has been included on-chain.
 The vote commitment tree is an append-only Merkle tree that records
 vote authority notes and vote commitments.
 
-### Tree Parameters
+The vote commitment tree structure, hash function, and leaf encoding
+are specified in [^voting-protocol]. Wallet clients interact with the
+tree through the query endpoints defined in [Commitment Tree (Latest)],
+[Commitment Tree at Height], and [Commitment Tree Leaves].
 
-- **Hash function:** Poseidon with the `P128Pow5T3` instantiation (width 3, rate 2) over the Pallas base field. [^protocol-poseidon]
-- **Depth:** 24
-- **Leaf values:** 32-byte Pallas base field elements (little-endian).
+## Private Information Retrieval Nullifier Exclusion Proofs
 
-### Incremental Synchronization
-
-Wallet clients maintain a local copy of the vote commitment tree by
-querying the [Commitment Tree Leaves] endpoint with a height range.
-The response provides the leaves appended in each block within the
-range, along with their starting indices, enabling the client to
-reconstruct the tree incrementally.
-
-The tree root at a specific height is available via the
-[Commitment Tree at Height] endpoint. This root is used as the
-`vote_comm_tree_anchor_height` public input when constructing ZKP2.
-
-## Nullifier Retrieval
-
-Wallet clients retrieve nullifier exclusion proofs (Merkle paths in the
-nullifier non-membership tree) using the PIR protocol specified in
-[^nullifier-pir].
-
-### Version Selection
-
-The `supported_versions.pir` field in the vote configuration lists the
-PIR retrieval scheme versions supported by the servers. Wallets MUST
-support `"v0"` (full download). Wallets SHOULD support `"v1"` (YPIR+SP)
-for improved bandwidth efficiency.
-
-If both `"v0"` and `"v1"` are listed and the wallet supports both, the
-wallet MAY choose either version. The wallet connects to one of the
-`pir_endpoints` from the vote configuration.
+Nullifier exclusion proofs are retrieved using the PIR protocol
+specified in [^nullifier-pir]. The wallet connects to one of the
+`pir_endpoints` from the vote configuration; version selection
+follows the rules in [Version Handling].
 
 ## Transaction Lifecycle
 
@@ -649,17 +789,43 @@ All REST endpoints accept and return `application/json`.
 
 - **Byte arrays**: Standard base64 encoding with padding (RFC 4648
 Section 4 [^rfc4648]).
-- **`vote_round_id` in URL paths**: Lowercase hexadecimal, 64
-characters (32 bytes). When `vote_round_id` appears in a JSON response
-body from chain endpoints, it is base64-encoded like other byte arrays.
-Helper server endpoints use hexadecimal encoding in both paths and
-request bodies.
+- **`vote_round_id`**: The encoding of `vote_round_id` varies by
+context. The following table lists every occurrence and its encoding:
+
+| Context                                          | Encoding                         |
+| ------------------------------------------------ | -------------------------------- |
+| Vote configuration JSON (`vote_round_id` field)  | Hex (64 lowercase characters)    |
+| URL path parameters (`{round_id}`, `{roundId}`)  | Hex (64 lowercase characters)    |
+| Delegation request body (`vote_round_id`)         | Base64 (32 bytes)                |
+| Vote commitment request body (`vote_round_id`)    | Base64 (32 bytes)                |
+| Share submission request body (`vote_round_id`)   | Hex (64 lowercase characters)    |
+| Chain query response bodies (`vote_round_id`)     | Base64 (32 bytes)                |
 - **Integers**: JSON numbers. Fields typed `uint32` or `uint64` in the
 protocol definition are encoded as JSON numbers.
 - **Enumerations**: JSON numbers corresponding to the protobuf enum
 value (e.g., `SESSION_STATUS_ACTIVE` = 1).
 
 # Rationale
+
+## Unified Vote Servers
+
+All endpoints — chain queries, transaction submission, and share
+submission — are served under the `/shielded-vote/v1/` path prefix
+from the same `vote_servers` base URLs. In the current architecture,
+a single `svoted` process hosts every endpoint on the same port, so a
+separate helper URL is unnecessary.
+
+Future deployments MAY split share-handling into independent services
+behind a reverse proxy. Because the configuration only exposes base
+URLs, such a split requires no schema change.
+
+## Consolidated `vote_server` Version
+
+The tally method and wallet-facing API are both properties of the same
+`svoted` process: the tally method is inseparable from the server that
+executes it, and the API surface is its external interface. A single
+`vote_server` version avoids combinatorial compatibility matrices and
+simplifies the upgrade path for wallet implementors.
 
 ## JSON over Protobuf
 
@@ -671,14 +837,9 @@ volumes involved.
 
 # Open issues
 
-- The vote configuration distribution mechanism is unspecified. A
-future revision may standardize a discovery endpoint or registry.
-- This ZIP specifies the API and wire format layer but does not cover
-proof construction (circuit inputs, witness gathering, proof
-generation). Wallet integrators must read the companion ZIPs
-([^orchard-balance-proof], [^voting-protocol]) for that. Should this
-ZIP be expanded to include proof construction steps, making it fully
-self-contained for wallet integrators?
+- The vote configuration distribution mechanism is intentionally not
+specified, leaving it up to the voting authority to define the working
+process which may be standardized as needed.
 
 # Reference implementation
 
@@ -707,3 +868,5 @@ is available at
 [^ea-ceremony]: [Draft ZIP: Election Authority Key Ceremony](draft-valargroup-ea-key-ceremony.md)
 
 [^zip-244]: [ZIP 244: Transaction Identifier Non-Malleability](zip-0244.rst)
+
+[^semver]: [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html)
