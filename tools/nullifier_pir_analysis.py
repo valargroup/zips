@@ -58,7 +58,7 @@ sys.path.insert(0, str(_ESTIMATOR_ROOT))
 from estimator import LWE, ND, schemes  # noqa: E402
 from estimator.lwe_primal import primal_usvp, primal_bdd  # noqa: E402
 from estimator.lwe_dual import matzov as dual_hybrid  # noqa: E402
-from estimator.reduction import RC  # noqa: E402
+from estimator.reduction import RC, ADPS16  # noqa: E402
 from estimator.util import batch_estimate, f_name  # noqa: E402
 from sage.all import oo  # noqa: E402
 
@@ -76,13 +76,17 @@ N = 2048
 STDDEV = 6.4
 M_TIER2 = 262_144
 
-# Two cost models: the conservative lower bound (Core-SVP / ADPS16) and the
-# more realistic MATZOV model that accounts for progressive BKZ,
+# Classical cost models: the conservative lower bound (Core-SVP / ADPS16) and
+# the more realistic MATZOV model that accounts for progressive BKZ,
 # dimensions-for-free, and refined nearest-neighbor sieve costs.
 MODELS = [
     ("Core-SVP (ADPS16)", RC.ADPS16),
     ("MATZOV 2022", RC.MATZOV),
 ]
+
+# Quantum cost model: Grover-accelerated sieving reduces the per-call SVP
+# exponent from 0.292 to 0.265 [LaaMosPol15].
+QUANTUM_MODEL = ("Quantum Core-SVP (ADPS16)", ADPS16(mode="quantum"))
 
 
 def estimate_rough(par, cost_model):
@@ -341,6 +345,71 @@ def print_sensitivity_sweep():
               f"{c_ok:>9s}  {m_ok:>9s}")
 
 
+def print_quantum_estimates():
+    """Run the lattice estimator with the quantum ADPS16 cost model.
+
+    Rather than hand-computing 0.265*beta from the classical uSVP block
+    size, this runs the full estimator with quantum sieving costs to find
+    the cheapest quantum attack for both Kyber512 and the PIR binding
+    instance.  This ensures the quantum column is consistent with the
+    classical column (both report the minimum across all attack families).
+    """
+    print()
+    print("=" * 72)
+    print("QUANTUM SECURITY ESTIMATES")
+    print("=" * 72)
+
+    q_name, q_model = QUANTUM_MODEL
+
+    kyber = schemes.Kyber512
+    pir_par = LWE.Parameters(
+        n=N, q=Q,
+        Xs=ND.DiscreteGaussian(STDDEV),
+        Xe=ND.DiscreteGaussian(STDDEV),
+        m=M_TIER2,
+        tag="PIR Tier 2",
+    )
+
+    results = {}
+    for label, par in [("Kyber512", kyber), ("PIR Tier 2 (binding)", pir_par)]:
+        print(f"\n  [{label} — {q_name}]")
+        res = estimate_rough(par, q_model)
+        for alg in res:
+            if res[alg]["rop"] != oo:
+                print(f"    {alg:20s} :: {res[alg]!r}")
+        bits, beta = extract_results(res)
+        results[label] = (bits, beta)
+
+    # Also run classical for side-by-side comparison
+    classical_results = {}
+    for label, par in [("Kyber512", kyber), ("PIR Tier 2 (binding)", pir_par)]:
+        res = estimate_rough(par, RC.ADPS16)
+        bits, beta = extract_results(res)
+        classical_results[label] = (bits, beta)
+
+    print()
+    print("  QUANTUM vs CLASSICAL COMPARISON:")
+    print("  ┌───────────────────────────┬──────────┬─────────────────┬─────────────────┐")
+    print("  │ Instance                  │ β (best) │ Classical ADPS16│ Quantum ADPS16  │")
+    print("  ├───────────────────────────┼──────────┼─────────────────┼─────────────────┤")
+
+    for label in ["Kyber512", "PIR Tier 2 (binding)"]:
+        c_bits, c_beta = classical_results[label]
+        q_bits, q_beta = results[label]
+        c_str = f"{c_bits:.1f}" if c_bits else "N/A"
+        q_str = f"{q_bits:.1f}" if q_bits else "N/A"
+        cb_str = str(c_beta) if c_beta else "—"
+        qb_str = str(q_beta) if q_beta else "—"
+        print(f"  │ {label:<25s} │ {cb_str:>4s}/{qb_str:<3s} │ {c_str:>15s} │ {q_str:>15s} │")
+
+    print("  └───────────────────────────┴──────────┴─────────────────┴─────────────────┘")
+    print()
+    print("  Note: β columns show classical/quantum cheapest-attack block sizes.")
+    print("  Both columns report the minimum rop across uSVP, BDD, and dual hybrid.")
+
+    return results
+
+
 def main():
     print("lattice-estimator:", _ESTIMATOR_ROOT)
     try:
@@ -354,6 +423,7 @@ def main():
     kyber_beta, pir_results = print_kyber_calibration()
     print_cost_model_ladder(kyber_beta, pir_results)
     print_sensitivity_sweep()
+    print_quantum_estimates()
 
 
 if __name__ == "__main__":
