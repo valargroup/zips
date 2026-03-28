@@ -104,7 +104,7 @@ sequence a wallet follows to participate in a shielded voting round.
 Each step references the normative section that specifies its details.
 All requirements use the language defined in those sections.
 
-## Phase 1: Discovery and Validation
+## Discovery and Validation
 
 1. **Obtain vote configuration.** Fetch or receive the vote
    configuration JSON document for the round.
@@ -124,7 +124,7 @@ All requirements use the language defined in those sections.
    configuration's `proposals` array and compare it to `proposals_hash`
    from the chain response. See [Proposals Hash].
 
-## Phase 2: Delegation
+## Delegation
 
 5. **Retrieve nullifier exclusion proofs.** Connect to a
    `pir_endpoints` server and retrieve Merkle non-membership proofs
@@ -146,7 +146,7 @@ All requirements use the language defined in those sections.
    tree. Identify the wallet's vote authority note by its commitment
    `van_cmx` computed during step 6.
 
-## Phase 3: Voting (repeat for each proposal)
+## Voting (repeat for each proposal)
 
 9. **Construct and submit vote commitment.** Build the ZKP2 proof
    (consuming the current VAN and producing a new VAN) and submit
@@ -175,7 +175,7 @@ Steps 9 through 13 are repeated sequentially for each proposal in
 the round. Each iteration consumes the current VAN and produces a
 new one, so proposals cannot be voted on in parallel.
 
-## Phase 4: Results (optional)
+## Results (optional)
 
 14. **View tally results.** After the round reaches FINALIZED status,
     query `GET /shielded-vote/v1/tally-results/{round_id}` for
@@ -276,50 +276,6 @@ The choice of distribution mechanism is outside the scope of this
 specification. Regardless of the mechanism, the wallet MUST validate the
 configuration as described above before using it.
 
-## Version Handling
-
-All version strings in `supported_versions` follow Semantic Versioning
-[^semver] and use the form `"v" MAJOR` (e.g., `"v0"`, `"v1"`). A
-wallet that supports major version N is compatible with any release
-N.x.y of that component.
-
-The `supported_versions` object contains three independently versioned
-axes: `pir` (array of strings), `vote_circuits` (string), and
-`vote_server` (string). `pir` is an array because multiple PIR schemes
-can coexist; the other two are single strings because the vote chain
-must agree on exactly one version per round.
-
-A wallet MUST reject the configuration if it does not support the
-advertised `vote_server` or `vote_circuits` version, or if
-`pir` contains no version it supports. If any check fails, the wallet
-MUST NOT proceed and SHOULD prompt the user to update.
-
-### URL Path Prefix
-
-REST endpoint paths include a version prefix (e.g.,
-`/shielded-vote/v1/`). The path version corresponds to the major
-version declared in `supported_versions.vote_server`. A `vote_server`
-value of `"v1"` uses the `/shielded-vote/v1/` prefix.
-
-### Forward Compatibility
-
-Wallets MUST ignore unrecognized fields in the vote configuration
-document and in API responses. This allows servers to ship minor and
-patch releases (new optional fields, bug fixes) without requiring a
-major version bump.
-
-A major version bump signals a breaking change: removed fields,
-changed semantics, or new required fields.
-
-### Relationship to `config_version`
-
-`config_version` versions the structure of the vote configuration JSON
-document itself (field names, types, nesting). `vote_server` versions
-the REST API behavior and tally semantics. The two can evolve
-independently: a structural change to the config schema (e.g., adding
-a new required top-level field) bumps `config_version`, while a change
-to endpoint behavior or tally method bumps `vote_server`.
-
 ## Data Query Endpoints
 
 All query endpoints are served relative to a `vote_servers` base URL
@@ -368,36 +324,23 @@ field can be used to verify consistency between the two sources.
 
 ### Proposals Hash
 
-The `proposals_hash` is the SHA-256 hash of the canonical JSON
-serialization of the `proposals` array from the vote configuration.
-Because the vote configuration is distributed out-of-band, this hash
-lets wallets verify that the proposals shown to the user match the
-proposals recorded on the vote chain.
+The `proposals_hash` is SHA-256 over the canonical JSON serialization
+of the `proposals` array, allowing wallets to verify that the
+proposals shown to the user match those on the vote chain.
 
-To compute the hash:
+To compute: construct a JSON array of proposal objects containing only
+`id`, `title`, and `options` (each with `index`, `label`), ordered by
+`id` then `index` ascending, with object keys in the order listed.
+Serialize with no whitespace and SHA-256 the UTF-8 result.
 
-1. Construct a JSON array containing each proposal object with exactly
-the fields `id` (integer), `title` (string), and `options` (array of
-`{index, label}` objects). Any other fields (e.g., `description`) MUST
-be excluded. Proposals are ordered by `id` ascending. Within each
-proposal, options are ordered by `index` ascending. Keys within each
-JSON object MUST appear in the following order:
-   - Proposal objects: `id`, `title`, `options`.
-   - Option objects: `index`, `label`.
-2. Serialize the array to JSON with no whitespace (no spaces after
-colons or commas, no newlines).
-3. Compute SHA-256 over the UTF-8 encoding of the resulting string.
-
-For example, given the vote configuration from [Vote Configuration
-Format], the preimage is:
+Example preimage (from [Vote Configuration Format]):
 
 ```
 [{"id":1,"title":"Approve protocol upgrade","options":[{"index":0,"label":"Support"},{"index":1,"label":"Oppose"}]}]
 ```
 
-Wallets SHOULD verify that `proposals_hash` in the VoteRound response
-matches the hash computed from the vote configuration's `proposals`
-array before proceeding.
+Wallets SHOULD verify `proposals_hash` against the vote
+configuration before proceeding.
 
 If no active round exists, the response contains a `round` field with
 a null or empty value.
@@ -744,6 +687,34 @@ specified in [^nullifier-pir]. The wallet connects to one of the
 `pir_endpoints` from the vote configuration; version selection
 follows the rules in [Version Handling].
 
+## Version Handling
+
+All version strings in `supported_versions` follow Semantic Versioning
+[^semver] and use the form `"v" MAJOR` (e.g., `"v0"`, `"v1"`). A
+wallet that supports major version N is compatible with any release
+N.x.y of that component.
+
+A wallet MUST reject the configuration if it does not support the
+advertised `vote_server` or `vote_circuits` version, or if
+`pir` contains no version it supports. If any check fails, the wallet
+MUST NOT proceed and SHOULD prompt the user to update.
+
+### URL Path Prefix
+
+REST endpoint paths include a version prefix (e.g.,
+`/shielded-vote/v1/`). The path version corresponds to the major
+version declared in `supported_versions.vote_server`. A `vote_server`
+value of `"v1"` uses the `/shielded-vote/v1/` prefix.
+
+### Relationship to `config_version`
+
+`config_version` versions the structure of the vote configuration JSON
+document itself (field names, types, nesting). `vote_server` versions
+the REST API behavior and tally semantics. The two can evolve
+independently: a structural change to the config schema (e.g., adding
+a new required top-level field) bumps `config_version`, while a change
+to endpoint behavior or tally method bumps `vote_server`.
+
 ## Transaction Lifecycle
 
 ### Broadcast Semantics
@@ -814,10 +785,6 @@ submission — are served under the `/shielded-vote/v1/` path prefix
 from the same `vote_servers` base URLs. In the current architecture,
 a single `svoted` process hosts every endpoint on the same port, so a
 separate helper URL is unnecessary.
-
-Future deployments MAY split share-handling into independent services
-behind a reverse proxy. Because the configuration only exposes base
-URLs, such a split requires no schema change.
 
 ## Consolidated `vote_server` Version
 
