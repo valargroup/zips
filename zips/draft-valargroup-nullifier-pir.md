@@ -42,6 +42,11 @@ RLWE (Ring Learning With Errors)
   ring $\mathbb{Z}[x]/(x^d + 1)$. A single RLWE ciphertext encrypts $d$
   values simultaneously, roughly speaking.
 
+Selector LWE instance
+
+: The LWE-style hardness instance induced by the row-selector query
+  ciphertext and its public matrix.
+
 CDKS transformation
 
 : The Chen–Dai–Kim–Song packing procedure [^CDKS2020] that converts $d$ LWE
@@ -233,9 +238,6 @@ The following are explicitly out of scope for this ZIP:
 - Sub-second end-to-end query latency. The two sequential PIR round-trips
   impose a latency floor determined by network conditions.
 - Retrieval of data other than nullifier exclusion proofs.
-- Noise analysis. Refer to YPIR paper for noise and security analysis. We directly use the suggested values with no amendments [^YPIR]. (TODO: Bring this
-  into the ZIP. WIP section # noise-analysis)
-
 
 # High-level summary
 
@@ -1818,7 +1820,7 @@ CRT-composing them.
 
 ##### Expansion of $\mathsf{seed\_A}$ (Row-Selector Public Randomness)
 
-$\mathsf{seed\_A}$ defines the public randomness used by the deployed
+$\mathsf{seed\_A}$ defines the public randomness used by the
 row-selector query. No alternate stream selection or nonce-derived
 domain separation is applied.
 
@@ -1938,6 +1940,679 @@ second rows (row 1); the corresponding public rows (row 0) are
 reconstructed by the server from $\mathsf{seed\_pack}$ using the
 convention in [Packing-Level Ciphertext Convention].
 
+
+# Rationale
+
+## Security Analysis
+
+The YPIR+SP construction relies on three cryptographic hardness
+assumptions and one modeling assumption:
+
+1. **Selector RLWE.** Ring-LWE hardness for the seeded negacyclic
+   selector matrix used in query generation (the secret is a single
+   ring element, so the selector is an RLWE instance with
+   $B = \lceil m/d \rceil$ samples, where $m$ is the padded row count
+   and $d$ the ring degree). Breaking this compromises query privacy.
+2. **Packing-key RLWE.** Standard RLWE hardness for the packing-key
+   ciphertexts. Because the packing key is encrypted under the same
+   $s^\star$ that determines the selector secret, breaking this also
+   compromises query privacy.
+3. **Packing-key circular security.** An additional circular-security /
+   KDM assumption for the packing key, because those ciphertexts
+   encrypt known linear functions of the secret under that same
+   secret. Breaking this likewise compromises query privacy.
+4. **Independence heuristic.** Intermediate error terms that arise
+   at different stages of the protocol are treated as statistically
+   independent, so that variances add across stages. This is not a
+   hardness assumption but a modeling assumption for the noise
+   analysis: if it is violated, decryption may fail more often than
+   predicted but no secrets are leaked.
+
+This section catalogs the three hardness instances, their parameters,
+and the concrete hardness estimates.
+
+The lattice-estimator outputs reported in [Hardness Estimates]
+evaluate both the selector and packing-key RLWE instances by applying
+the estimator to the corresponding LWE parameters. They do not
+quantify the circular-security / KDM assumption for the packing key.
+
+In all instances, the discrete Gaussian width parameter is
+$\sigma = 6.4\sqrt{2\pi} \approx 16.03$, corresponding to standard
+deviation $6.4$. The secret and error distributions are identical
+(normal-form LWE/RLWE).
+
+### RLWE Hardness
+
+There are two parts of the protocol relying on RLWE security:
+- Selector LWE instance
+- Packing key RLWE
+
+While the Selector LWE instance is an LWE problem, it is derived from negacyclic public randomness (i.e. ring structure).
+
+#### Methodology
+
+We analyze the hardness of Ring-LWE as an LWE problem, since, so far, the best known attacks do not make use of the ring structure [^Kyber-CoreSVP] [^NewHope].
+
+We acknowledge that there exist algebraic attacks that exploit the ring or
+module structure rather than treating the problem as unstructured LWE. This is
+an active area of research (see Kyber specification Section
+5.3.1 [^Kyber]). Recent quantum algorithms for Ideal-SVP [^CDW2017]
+[^PHS2019] achieve approximation factors far too large to threaten
+Ring-LWE at cryptographic parameters; the quantitative gap is detailed
+below. No known algebraic attack achieves better concrete cost than
+lattice reduction against unstructured LWE at comparable parameters. 
+
+The argument chains together as follows. The worst-case reduction of
+Lyubashevsky, Peikert, and Regev [^LPR2013] (Theorem 3.6) establishes
+that breaking Ring-LWE requires solving worst-case Ideal-SVP with
+approximation factor $\gamma = \tilde{O}(\sqrt{n}/\alpha)$, where
+$\alpha$ parameterizes the error width. The best known quantum
+algorithms for Ideal-SVP [^CDW2017] [^PHS2019] achieve only
+$\gamma = \exp(\Theta(\sqrt{n}))$; experimental analysis by Ducas,
+Plançon, and Wesolowski [^DPW2019] confirms that the effective
+approximation factors remain exponentially large at cryptographic
+dimensions. For the parameters used in this ZIP, the approximation
+factor required by the reduction is polynomial in $n$ (determined by
+$q$, $\sigma$, and $n$ via Theorem 3.6), while the achievable
+approximation factors are exponential in $\sqrt{n}$. Since smaller
+approximation factors are harder to achieve, these algorithms fall far
+short of what breaking Ring-LWE would require.
+
+
+The same methodology is used by NIST for evaluating ML-KEM (Kyber),
+which relies on Module-LWE over the same family of rings [^NIST-Kyber-FAQ].
+
+The concrete security estimation proceeds in three steps. First, each
+public value in the protocol is mapped to an LWE or RLWE instance by
+identifying the secret, the public matrix, and the error distribution.
+Second, the number of samples available to the adversary from a single
+query is counted. This is a critical parameter because more samples
+can enable cheaper lattice-reduction, dual-hybrid, or combinatorial
+attacks. The sample count is bounded per key by ensuring that a fresh
+secret is drawn for every query; the shared seeds produce the same
+public matrices across queries, but independent secrets prevent an
+adversary from combining samples across queries to increase the
+effective sample count. Third, the resulting parameters
+$(n, q, \sigma, m)$ for each instance are fed into the lattice
+estimator [^Albrecht2015], which evaluates all known attack families
+and reports the cost of the cheapest one. The subsections below carry
+out the first two steps. [Hardness Estimates] reports the third.
+
+#### Structured Selector Instance
+
+The selector $c$ defined in [Regev Encryption] induces a structured
+seeded-negacyclic hardness instance. An adversary who observes the
+public matrix $A$ and the selector vector $c$ obtains $m$ samples of
+the form
+
+$$c[j] = \langle \mathbf{a}_j, \mathbf{s} \rangle + d^{-1} e_j + \Delta \cdot d^{-1} \cdot \mu_i[j] \pmod{q}$$
+
+for $j \in \{0, \ldots, m-1\}$, where $\mathbf{a}_j$ is column $j$ of
+$A^T$.
+
+| Parameter | Value |
+|---|---|
+| Dimension $n$ | $2048$ |
+| Modulus $q$ | $66\,974\,689\,739\,603\,969 \approx 2^{55.89}$ |
+| Secret distribution | Each entry of $\mathbf{s}$ from $D_{\mathbb{Z},\sigma}$ (stddev $6.4$) |
+| Error distribution | Each entry of $e$ from $D_{\mathbb{Z},\sigma}$ (stddev $6.4$) |
+| Samples $m$ | $2\,048$ (Tier 1) or $262\,144$ (Tier 2) |
+
+The Tier 2 instance provides the adversary with 262,144 samples and is
+the binding case for security analysis.
+
+The public matrix $A \in \mathbb{Z}_q^{n \times m}$ is not uniformly
+random. It is a horizontal concatenation of
+$B = \lceil m/d \rceil$ negacyclic matrices, each derived from an
+independent ring element in
+$R_q = \mathbb{Z}_q[X]/(X^{2048}+1)$ expanded from
+$\mathsf{seed\_A}$, as specified in
+[Negacyclic Extraction of the Selector Matrix]. For Tier 2,
+$B = 128$ independent ring elements determine the full
+$2048 \times 262\,144$ matrix.
+
+The hardness estimates in [Hardness Estimates] apply the lattice
+estimator to the LWE parameters $(n, q, \sigma, m)$ corresponding to
+this instance, following the methodology described in [Methodology].
+
+The selector secret $\mathbf{s}$ is the coefficient vector of the
+fresh RLWE secret $s^\star$ sampled in [Client Key Generation]. A
+fresh $s^\star$ is drawn for every query, so the adversary obtains at
+most $m$ samples from any single key. Across queries, the shared
+$\mathsf{seed\_A}$ yields the same $A$, but independent secrets
+prevent combining samples across queries.
+
+#### Packing-key RLWE
+
+The packing key defined in [PackingKeyGeneration] consists of 33 RLWE
+ciphertexts $K_{r,u}$ for
+$r \in \{0, \ldots, 10\}$, $u \in \{0, 1, 2\}$, encrypted under the
+client's fresh secret $s^\star \in R_q$. Ignoring the key-dependent
+plaintext (addressed in [Circular Security] below), each ciphertext
+is a standard RLWE sample
+$(-\rho_{r,u},\; \rho_{r,u} \cdot s^\star + e_{r,u})$.
+
+Following the same methodology used for the selector, each RLWE
+sample is analyzed as scalar LWE via negacyclic extraction: the ring
+element $\rho_{r,u}$ determines a $d \times d$ negacyclic matrix, and
+the single ring ciphertext yields $d = 2048$ scalar LWE samples
+under the coefficient vector of $s^\star$. The 33 ring-level samples
+therefore expand to $33 \times 2048 = 67\,584$ scalar LWE samples.
+
+| Parameter | Value |
+|---|---|
+| Ring degree $d$ | $2048$ |
+| Ring | $R_q = \mathbb{Z}_q[X]/(X^{2048}+1)$ |
+| Modulus $q$ | $\approx 2^{55.89}$ (same as selector) |
+| Secret distribution | Coefficients of $s^\star$ from $D_{\mathbb{Z},\sigma}$ (stddev $6.4$) |
+| Error distribution | $e_{r,u} \leftarrow D_{\mathbb{Z},\sigma}^d$ per ciphertext (stddev $6.4$) |
+| Ring-level samples | $33$ per query ($11$ automorphisms $\times$ $3$ gadget digits) |
+| Scalar LWE samples $m$ | $67\,584$ ($33 \times 2048$, via negacyclic extraction) |
+| Public elements | $\rho_{r,u} \in R_q$ pseudorandom from $\mathsf{seed\_pack}$ (ChaCha20) |
+
+Each query uses a fresh $s^\star$, so at most 33 RLWE samples (equivalently
+$67\,584$ scalar LWE samples) are available from any single key. Across
+queries, the shared $\mathsf{seed\_pack}$ yields the same public elements
+$\rho_{r,u}$, but independent secrets prevent combining samples across
+queries.
+
+### Circular Security
+
+The packing-key ciphertexts encrypt key-dependent messages under
+$s^\star$. The plaintext of $K_{r,u}$ is
+
+$$B_\mathsf{ks}^u \cdot \tau_{k_r}(s^\star),$$
+
+where $B_\mathsf{ks} = 2^{19}$ is the gadget base from [Parameters]
+and $\tau_{k_r}$ is the ring automorphism
+$X \mapsto X^{k_r} \bmod (X^d + 1)$ for $k_r = d/2^r + 1$
+([PackingKeyGeneration]). The 33 encrypted functions are
+
+$$\bigl\{B_\mathsf{ks}^u \cdot \tau_{k_r}(s^\star) : r \in \{0, \ldots, 10\},\; u \in \{0, 1, 2\}\bigr\}.$$
+
+Each function is a ring automorphism (a fixed linear permutation of
+coefficients with sign changes) composed with scalar multiplication
+by a power of the gadget base. These are linear functions of
+$s^\star$ over $R_q$.
+
+This constitutes a key-dependent message (KDM) security assumption:
+the adversary sees RLWE encryptions of known linear functions of the
+secret key under that same key. This is strictly stronger than the
+standard RLWE assumption on which the packing-key RLWE analysis
+relies. The same
+circular-security assumption is required by Spiral and
+OnionPIR [^YPIR], and is standard for lattice-based schemes employing
+automorphism-based key switching. No attack is known that exploits
+this KDM structure for the parameter sizes used in this ZIP.
+
+Under standard RLWE, if one ignores the key-dependent plaintexts, the
+packing-key ciphertexts expose 33 RLWE samples (equivalently $67\,584$
+scalar LWE samples) per query. The lattice estimator reports hardness
+essentially identical to the Tier 2 selector instance (see [Hardness
+Estimates]). However, these estimates do not establish security for the
+circular-security / KDM assumption. That assumption requires RLWE to remain hard even when
+the adversary is given encryptions of the known linear functions
+$B_\mathsf{ks}^u \cdot \tau_{k_r}(s^\star)$ under the same secret
+$s^\star$. No attack is known that exploits this structure for the
+parameter sizes used in this ZIP, but the hardness estimates in
+[Hardness Estimates] do not quantify the strength of this KDM
+assumption.
+
+### Instance Summary
+
+| Instance | Type | $n$ / $d$ | $\log_2 q$ | Stddev | Samples | Public-matrix constraint |
+|---|---|---|---|---|---|---|
+| Selector RLWE (Tier 2, binding) | Ring-LWE | $2048$ | $55.9$ | $6.4$ | $262\,144$ | Negacyclic blocks ($128$ ring elements) |
+| Selector RLWE (Tier 1) | Ring-LWE | $2048$ | $55.9$ | $6.4$ | $2\,048$ | Negacyclic block ($1$ ring element) |
+| Packing-key RLWE | Ring-LWE | $2048$ | $55.9$ | $6.4$ | $67\,584$ | Negacyclic blocks ($33$ ring elements) |
+| Packing-key circular security | KDM-RLWE | $2048$ | $55.9$ | $6.4$ | $67\,584$ | + encrypts $B_\mathsf{ks}^u \cdot \tau_{k_r}(s^\star)$ under $s^\star$ |
+
+### Hardness Estimates
+
+The following estimates were produced by
+`tools/nullifier_pir_analysis.py` using the lattice
+estimator [^Albrecht2015] (commit `a51a410`, 2026-03-23) with both the Core-SVP
+(ADPS16) and Matzov cost models. Core-SVP prices a single sieve call
+at $2^{0.292\beta}$; Matzov accounts for progressive BKZ,
+dimensions-for-free, and refined nearest-neighbor sieve
+costs [^Matzov2022]. Three attacks are evaluated: primal uSVP, primal
+BDD (Babai nearest plane [^LiuNgu2013]), and the Matzov dual hybrid.
+
+| Instance | Attack | $\beta$ | Core-SVP (bits) | Matzov (bits) |
+|---|---|---|---|---|
+| Selector RLWE (Tier 2, binding) | uSVP | 356 | 104.0 | 132.6 |
+| Selector RLWE (Tier 2) | BDD | 356 / 351 | 104.2 | 131.5 |
+| Selector RLWE (Tier 2) | dual hybrid | 360 | 105.1 | 134.5 |
+| Selector RLWE (Tier 1) | uSVP | 357 | 104.2 | 132.8 |
+| Selector RLWE (Tier 1) | BDD | 357 / 352 | 104.6 | 131.7 |
+| Packing-key RLWE ($m = 67\,584$) | uSVP | 356 | 104.0 | 132.6 |
+| Packing-key RLWE | BDD | 356 / 351 | 104.2 | 131.5 |
+| Packing-key RLWE | dual hybrid | 360 | 105.1 | 134.5 |
+
+For the BDD rows, the $\beta$ column shows Core-SVP / Matzov block
+sizes, which differ because the two cost models shift the optimal
+lattice dimension.
+
+The packing-key RLWE instance, analyzed with $m = 67\,584$ expanded
+scalar LWE samples (33 ring elements $\times$ 2048 coefficients),
+yields hardness estimates essentially identical to the Tier 2
+selector. This is expected: once $m \gg n$, additional samples
+provide negligible advantage to the attacker.
+
+The binding case is the Tier 2 selector. Under Core-SVP the cheapest
+attack is uSVP at $\beta = 356$, giving $2^{104.0}$ bits. Under
+Matzov the cheapest attack is BDD at $\beta = 351$, giving
+$2^{131.5}$ bits. The gap between these two figures is a structural
+feature of the cost models, not specific to this parameter set; see
+[Kyber512 Calibration] and [Cost Model Analysis] for context.
+
+### Comparison with YPIR Paper
+
+The YPIR paper [^YPIR] claims 128-bit security for these parameters
+($d = 2048$, $q \approx 2^{56}$, $\sigma = 6.4\sqrt{2\pi}$) and
+references lattice estimator commit `4195c66` (2024-02-06).
+
+In a public clarification [^ypir-issue-1], the YPIR author confirmed
+this claim using the full `LWE.estimate` (not the `.rough()`
+approximation) and noted that the paper specifies noise using the
+subgaussian width $s = \sigma\sqrt{2\pi}$, so the passed in standard
+deviation corresponding to the RLWE-selector is $\sigma = 6.4$. This
+ZIP's estimates use the newer commit `a51a410`; under the Matzov cost
+model the binding instance achieves 131.5-bit security (exceeding
+128), while under Core-SVP alone it achieves 104 bits (below 128).
+
+The parameters are identical; the 128-bit claim is consistent with
+Matzov-style modeling and with the qualitative observation that bare
+Core-SVP is a lower-bound that omits substantial attack overheads. 
+
+The
+same gap between Core-SVP and more refined models appears for
+Kyber512, where Core-SVP gives only ~115 bits yet Matzov gives ~140
+bits (see below).
+
+### Kyber512 Calibration
+
+To calibrate the gap between Core-SVP and more refined cost models,
+the same lattice estimator is applied to Kyber512
+($n = 512$, $q = 3329$, $\mathsf{Xs} = \mathsf{Xe} = \text{CBD}(\eta{=}3)$).
+
+| Instance | $\beta$ (uSVP) | Core-SVP (bits) | Matzov (bits) |
+|---|---|---|---|
+| Kyber512 | 406 | 115.5 | 139.7 |
+| PIR Tier 2 (binding) | 356 | 104.0 | 131.5 |
+
+The Core-SVP and Matzov columns report the minimum across uSVP, BDD,
+and dual hybrid. Under Matzov the PIR binding attack is BDD
+($\beta = 351$); the uSVP block-size ratio $356 / 406 \approx 0.88$
+remains a cost-model-independent measure of relative security. Under
+any cost model applied uniformly to both parameter sets, the PIR
+parameters are within 12% of Kyber512 in uSVP block-size terms.
+
+Kyber512 exhibits the same pattern: Core-SVP gives 115.5 bits while
+Matzov gives 139.7 bits, a gap of ~24 bits. NIST's gate-count
+estimate for attacking Kyber512 is
+$2^{147}$–$2^{160}$ [^NIST-Kyber-FAQ], substantially above Core-SVP's
+$2^{115.5}$ for the same parameters. The NIST Kyber-512
+FAQ [^NIST-Kyber-FAQ] explains that Core-SVP does not account for the
+full cost of the BKZ algorithm, memory access overhead, or hidden
+constant factors in sieving.
+
+The structural parallel extends beyond parameter sizes: Kyber's
+security is based on Module-LWE (rank $k = 2$), while the PIR
+selector is Ring-LWE (rank $k = 1$, a special case of Module-LWE).
+Both are evaluated by applying the lattice estimator to the
+corresponding LWE parameters — the standard methodology for all
+structured-LWE variants over power-of-2 cyclotomics.
+
+The purpose of this comparison is not to invoke NIST's authority
+for the PIR parameters — NIST evaluated Kyber for a different use
+case and the adequacy of Kyber512's security margins is itself
+debated [^Bernstein2020]. Rather, the comparison shows that the
+large gap between Core-SVP and Matzov is a structural feature of the
+cost models, not a weakness specific to the PIR parameter set.
+
+### Cost Model Analysis
+
+Following the NIST Kyber-512 FAQ methodology [^NIST-Kyber-FAQ],
+realistic gate costs for the binding instance are estimated by
+layering corrections onto the Core-SVP baseline. Under Core-SVP the
+binding attack is uSVP ($\beta = 356$); under Matzov the binding
+attack is BDD ($\beta = 351$). This subsection provides heuristic
+calibration for interpreting the estimator outputs; it is not an
+independent hardness proof:
+
+| Cost model | Est. bits | Derivation |
+|---|---|---|
+| Core-SVP (ADPS16, $0.292\beta$) | 104 | uSVP $\beta = 356$; single sieve call, no BKZ overhead |
+| Matzov (estimator) | 131.5 | BDD $\beta = 351$; progressive BKZ + refined NN; free memory |
+| Matzov + hidden overheads | ~135–137 | $131.5 + 3\text{–}5$ (Ducas 2022 [^Ducas2022] correction) |
+| Matzov + memory ($k{=}2$) | ~145 | $131.5 + 13.1$ (cube-root memory access) |
+| Matzov + memory ($k{=}1$) | ~152 | $131.5 + 20.0$ (BGJ1 square-root memory) |
+| All corrections stacked ($k{=}2$) | ~148–150 | $131.5 + 3\text{–}5 + 13.1$ |
+
+Each row after Matzov applies one independent correction to the
+Matzov baseline of 131.5 bits; the final row stacks all corrections.
+The three correction sources are:
+
+1. **Matzov sieving refinements** (progressive BKZ, dimensions-for-free,
+   refined nearest-neighbor costs [^Matzov2022]): add ~27.5 bits over
+   Core-SVP for the binding instance, producing the 131.5-bit Matzov
+   baseline. These refinements are from Section 6 of the Matzov report
+   and are independent of the dual-sieve controversy
+   (Ducas–Pulles 2023).
+
+2. **Hidden overheads** [^Ducas2022]: the BDGL sieving algorithm incurs
+   an overhead of ~$2^6$ in practice compared to the idealized model,
+   partially mitigable in the full attack. After mitigation this adds
+   ~3–5 bits on top of the Matzov baseline.
+
+3. **Memory access costs**: the best sieving algorithms require
+   exponentially many queries to exponentially large memory. Under
+   NIST's $k = 2$ (cube-root) regime, each sieve call incurs an
+   additional $(0.3294 - 0.292) \times \beta \approx 13.1$ bits of
+   overhead (using the Matzov binding $\beta = 351$). Under the more
+   conservative BGJ1 $k = 1$ (square-root) regime, the overhead is
+   $(0.349 - 0.292) \times \beta \approx 20.0$ bits.
+
+Corrections 2 and 3 address different aspects of the sieve cost
+(implementation constants vs. memory-access scaling) and are
+independent of each other.
+
+Accordingly, the 125-bit classical-security target is met for the
+selector Ring-LWE instance under the Matzov cost model, and remains
+above 125 bits under the additional heuristic calibrations discussed in
+this section. This ZIP does not claim that every cost model more realistic than
+bare Core-SVP yields a bound above 125 bits for this instance.
+
+### Sensitivity Analysis
+
+The following table shows how bit-security varies with the noise
+standard deviation (all other parameters fixed at $n = 2048$,
+$q \approx 2^{55.9}$, $m = 262\,144$):
+
+| Stddev $s$ | Gaussian width $s\sqrt{2\pi}$ | Core-SVP (bits) | Matzov (bits) | Core $\geq 125$ | Matzov $\geq 125$ |
+|---|---|---|---|---|---|
+| 3.2 | 8.0 | 98.4 | 126.4 | no | yes |
+| **6.4** | **16.0** | **104.0** | **131.5** | **no** | **yes** |
+| 10.0 | 25.1 | 107.5 | 134.9 | no | yes |
+| 16.0 | 40.1 | 111.3 | 138.7 | no | yes |
+| 25.0 | 62.7 | 115.3 | 142.4 | no | yes |
+| 40.0 | 100.3 | 119.7 | 146.5 | no | yes |
+| 64.0 | 160.4 | 124.1 | 150.8 | no | yes |
+| 100.0 | 250.7 | 128.8 | 155.0 | yes | yes |
+
+Under Matzov, even stddev $= 3.2$ provides 126.4 bits, exceeding the
+125-bit target. The current stddev $= 6.4$ provides 6.5 bits of margin.
+Under Core-SVP alone, reaching 125 bits would require
+stddev $\approx 64$–$100$, which is impractical for the noise budget
+(see the correctness analysis below).
+
+### Security Assessment
+
+The selector instance relies on Ring-LWE hardness over
+$\mathbb{Z}_q[X]/(X^{2048}+1)$, evaluated using the same
+lattice-estimator methodology applied to ML-KEM. The binding estimate
+is 131.5 bits under the Matzov cost model (BDD attack) and 104.0 bits
+under Core-SVP (uSVP attack), meeting the 125-bit target under
+Matzov-style modeling.
+
+This ZIP therefore treats the 125-bit classical-security target as
+satisfied under the Matzov-style attack-cost model used throughout this
+analysis, not as a model-independent theorem for the deployed
+construction. The Kyber512 comparison and the cost-model ladder in
+[Kyber512 Calibration] and [Cost Model Analysis] are heuristic
+calibration arguments supporting that modeling choice; they are not
+independent hardness proofs for this PIR instance.
+
+The overall privacy argument additionally relies on the
+circular-security / KDM assumption for the packing key described in
+[Circular Security]. The hardness estimates do not quantify this assumption; no attack is known that exploits the KDM structure at these parameter sizes.
+
+### Quantum Security Estimates
+
+LWE and RLWE are not susceptible to Shor's algorithm. The primary
+quantum speedup for lattice problems comes from Grover-accelerated
+sieving [^LaaMosPol2015], which reduces the per-call SVP cost
+exponent from $0.292\beta$ (classical) to $0.265\beta$ (quantum).
+The lattice estimator [^Albrecht2015] implements this as the ADPS16
+quantum cost model. For the binding instance:
+
+| Cost model | Bits | Assumption |
+|---|---|---|
+| Classical Core-SVP ($0.292\beta$, uSVP $\beta = 356$) | 104.0 | — |
+| Quantum Core-SVP ($0.265\beta$, uSVP $\beta = 356$) | 94.3 | Unit-cost QRAM |
+| Classical Matzov (estimator, BDD $\beta = 351$) | 131.5 | Free classical memory |
+
+The 94.3-bit quantum Core-SVP estimate is a single-oracle lower
+bound, analogous to the classical 104-bit figure. In the classical
+setting, the gap between Core-SVP and Matzov is 27.5 bits,
+reflecting progressive BKZ overhead, sieving constants, and memory
+access costs absent from the bare $2^{0.292\beta}$ formula. Whether
+an analogous gap exists in the quantum setting, where quantum sieve
+calls replace classical ones within the BKZ algorithmic structure,
+remains an open question; no quantum Matzov estimate is produced in
+this analysis.
+
+The Kyber512 calibration from [Kyber512 Calibration] extends
+directly to the quantum setting. The following table reports the
+minimum quantum Core-SVP cost across uSVP, BDD, and dual hybrid,
+produced by running the lattice estimator with the ADPS16 quantum
+cost model (`tools/nullifier_pir_analysis.py`):
+
+| Instance | Classical Core-SVP (min) | Quantum Core-SVP (min) |
+|---|---|---|
+| Kyber512 | 115.5 | 106.3 |
+| PIR Tier 2 (binding) | 104.0 | 94.3 |
+
+For both instances, the classical and quantum columns report the
+cheapest attack across all families evaluated by the estimator. For
+Kyber512, the cheapest attack in both settings is the dual hybrid;
+for the PIR binding instance, it is uSVP. The uSVP block-size ratio
+$356/406 \approx 0.88$ remains a cost-model-independent measure of
+relative primal security.
+
+The quantum Core-SVP estimate assumes unit-cost quantum random
+access memory (QRAM). Without efficient QRAM, the quantum sieving
+advantage is reduced and estimates approach the classical values.
+
+NIST selected Kyber512 as PQC Category 1 (security equivalent to
+AES-128 against quantum adversaries) despite its quantum Core-SVP
+estimate of 106.3 bits, because Core-SVP omits substantial overhead
+factors [^NIST-Kyber-FAQ]. By the same cost-model reasoning that
+applies to ML-KEM, namely, that bare Core-SVP understates the true
+attack cost by omitting BKZ overhead, sieving constants, and memory
+access costs, the PIR parameters, at 88% of Kyber512's uSVP block
+size, are consistent with the characterization in [Abstract] as
+plausibly post-quantum. Whether the classical gap between Core-SVP
+and Matzov has a quantum analog remains an open question; no quantum
+Matzov-style estimate is produced in this analysis.
+
+## Correctness Analysis
+
+Decryption succeeds when the noise in every plaintext slot is less
+than $\Delta/2$ in absolute value, where
+$\Delta = \lfloor q/p \rfloor = 4\,087\,810\,653\,052 \approx 2^{41.9}$.
+This section tracks the per-slot noise variance through four stages
+and derives a heuristic correctness estimate. The estimate below relies
+on the independence heuristic and on treating the accumulated error
+terms as subgaussian with the stated variance proxy. The Regev and
+database-scan stages use genuinely independent error samples ($e_j$
+are fresh discrete Gaussians), so the variance sums there are exact.
+The heuristic is needed at the CDKS packing and modulus-switching
+stages, where key-switching noise and rounding errors are treated as
+independent of each other and of the carried-forward scan noise.
+
+Throughout, the discrete Gaussian standard deviation is
+$s = 6.4$ (the width parameter $\sigma = 6.4\sqrt{2\pi}$ gives
+variance $s^2 = 40.96$). Subscripted standard deviations such as
+$\sigma_\text{scan}$ denote $\sqrt{V}$ for the corresponding stage
+variance $V$, not the Gaussian width parameter $\sigma$.
+
+### Regev Encryption Noise
+
+The query selector ([Regev Encryption]) is
+
+$$c[j] = (A^T \mathbf{s})[j] + d^{-1} e_j + \Delta \cdot d^{-1} \mu_i[j],$$
+
+where $e_j \sim D_{\mathbb{Z},\sigma}$ with $\text{Var}(e_j) = s^2 = 40.96$.
+
+The ciphertext carries the noise $d^{-1} e_j$, where
+$d^{-1} \bmod q$ is the pre-scaling from [Regev Encryption]. The
+CDKS packing procedure amplifies the base noise by $4^L = d^2$ (see
+[CDKS Packing Noise (11 Levels)] and
+[Why A Is Negacyclic But the Database Is Not]), which restores the
+factor of $d^{-1}$. After this restoration the effective per-slot
+noise contribution from Regev encryption is $e_j$ with variance
+$s^2$.
+
+### Database Scan Noise
+
+Per [Server Computation], the scan computes
+$b'_k = \sum_{j} \mathsf{DB}[j][k] \cdot c[j]$ for each
+plaintext-word column $k$. After $d^{-1}$ restoration, the effective
+scan noise per column is
+
+$$N_k = \sum_{j=0}^{m-1} \mathsf{DB}[j][k] \cdot e_j,$$
+
+with variance
+
+$$V_\text{scan} = s^2 \sum_{j=0}^{m-1} \mathsf{DB}[j][k]^2.$$
+
+For worst-case analysis (all 14-bit words maximal):
+
+$$V_\text{scan}^{\max} = m \cdot (2^{14} - 1)^2 \cdot s^2.$$
+
+For Tier 2 ($m = 262\,144$):
+$V_\text{scan}^{\max} \approx 2^{51.4}$,
+$\sigma_\text{scan} \approx 2^{25.7}$.
+
+### CDKS Packing Noise (11 Levels)
+
+At each CDKS level $\ell$, the recursion
+$\mathsf{CDKS}_\ell = C^\text{sum}_\ell + \mathsf{AutoKS}_\ell(C^\text{diff}_\ell)$
+combines two independent sub-results. Monomial multiplication by
+$Y_\ell$ and the ring automorphism $\tau_{\kappa_\ell}$ permute
+coefficients without increasing noise magnitude. Key switching
+([PackingKeyGeneration]) adds fresh noise from
+$S = \sum_{u=0}^{L_\mathsf{ks}-1} K_u \cdot f^{(u)}$, where each
+$K_u$ has per-coefficient noise variance $s^2$ and each gadget-digit
+polynomial $f^{(u)}$ has coefficients in $\{0, \ldots, B_\mathsf{ks}-1\}$.
+
+The per-coefficient key-switching noise variance per level is
+
+$$V_\text{ks} = L_\mathsf{ks} \cdot d \cdot \frac{B_\mathsf{ks}^2}{3} \cdot s^2
+= 3 \cdot 2048 \cdot \frac{(2^{19})^2}{3} \cdot 40.96 \approx 2^{54.4}.$$
+
+The noise recurrence per CDKS level is $V_\ell = 4 V_{\ell-1} + V_\text{ks}$:
+$C^\text{sum}$ and $C^\text{diff}$ each carry noise from both the even
+and odd sub-results (variance $2 V_{\ell-1}$ each), and their
+combination in $C^\text{sum} + \mathsf{AutoKS}(C^\text{diff})$
+contributes $4 V_{\ell-1}$ total because the terms reference
+independent coefficient indices under the automorphism permutation.
+
+Solving for $L = 11$ levels, the per-slot noise after packing is
+
+$$V_\text{packed} = V_\text{scan} + \frac{d^2 - 1}{3} \cdot V_\text{ks}$$
+
+The recurrence gives $V_L = 4^L V_0 + \frac{4^L - 1}{3} V_\text{ks}$
+with $V_0 = d^{-2} V_\text{scan}$ (from the $d^{-1}$ pre-scaling in
+[Regev Encryption]). Since $4^{11} = d^2$, the first term becomes
+$V_\text{scan}$ and the key-switching noise accumulates as a geometric
+sum.
+
+Numerically:
+$(d^2 - 1)/3 \cdot V_\text{ks} = 1\,398\,101 \cdot 2^{54.4} \approx 2^{74.8}$.
+The key-switching noise dominates:
+$V_\text{packed} \approx 2^{74.8}$,
+$\sigma_\text{packed} \approx 2^{37.4}$.
+
+### Split Modulus Switching Noise
+
+Per [Split Modulus Switching], the server rounds each packed RLWE
+ciphertext $(a, b)$ to smaller moduli. After the client lifts and
+decrypts ($u = \tilde{b} + \tilde{a} \cdot s^\star$), two rounding
+errors contribute:
+
+**Mask rounding.** Each coefficient of $a$ is rounded to
+$q_\mathsf{mask} = q_{2,1}$, introducing per-coefficient error bounded
+by $R_a = q / (2 q_\mathsf{mask}) \approx 2^{26.9}$. Multiplication by
+$s^\star$ amplifies this over $d$ terms:
+
+$$V_\text{mask} = d \cdot \frac{R_a^2}{3} \cdot s^2 \approx 2^{68.6}.$$
+
+**Payload rounding.** Each coefficient of $b$ is rounded to
+$q_\mathsf{payload} = 2^{20}$, introducing per-coefficient error
+bounded by $R_b = q / (2 q_\mathsf{payload}) \approx 2^{34.9}$.
+This contributes directly (not multiplied by $s^\star$):
+
+$$V_\text{payload} = \frac{R_b^2}{3} \approx 2^{68.2}.$$
+
+Total modulus-switching noise:
+$V_\text{ms} = V_\text{mask} + V_\text{payload} \approx 2^{69.4}$,
+$\sigma_\text{ms} \approx 2^{34.7}$.
+
+### Final Decryption Error Bound
+
+The total per-slot noise variance at decryption is the sum of the
+packing and modulus-switching contributions:
+
+$$V_\text{total} = V_\text{packed} + V_\text{ms}
+\approx 2^{74.8} + 2^{69.4} \approx 2^{74.9}.$$
+
+The packing key-switching noise dominates.
+$\sigma_\text{total} \approx 2^{37.5}$.
+
+| Stage | $\log_2 V$ | $\log_2 \sqrt{V}$ |
+|---|---|---|
+| Scan noise (worst case, Tier 2) | 51.4 | 25.7 |
+| Single key-switch level $V_\text{ks}$ | 54.4 | 27.2 |
+| After CDKS packing (11 levels) | 74.8 | 37.4 |
+| Modulus switching (mask + payload) | 69.4 | 34.7 |
+| **Total at decryption** | **74.9** | **37.5** |
+
+Decryption succeeds when every slot's noise magnitude is below
+$\Delta/2 \approx 2^{40.9}$. With
+$t = \Delta / (2\sigma_\text{total}) = 2^{40.9} / 2^{37.5} = 2^{3.4} \approx 10.6$
+standard deviations, the sub-Gaussian tail bound gives:
+
+$$\Pr\bigl[|X| > t \cdot \sigma_\text{total}\bigr]
+\leq 2\exp(-t^2/2) \approx 2^{-80}.$$
+
+For Tier 2, each response consists of
+$\lceil 14\,007 / 2048 \rceil = 7$ packed RLWE ciphertexts with
+$7 \times 2048 = 14\,336$ total slots. Applying a union bound:
+
+$$\Pr[\text{any slot fails}]
+\leq 14\,336 \times 2^{-80} < 2^{14} \cdot 2^{-80} = 2^{-66}.$$
+
+This is well below the $2^{-40}$ correctness target.
+
+### Correctness Cross-Check Against the YPIR Paper
+
+The YPIR paper's correctness proof (Theorem 3.4, Appendix C) analyzes
+the default YPIR variant (DoublePIR-based). This ZIP uses YPIR+SP,
+which eliminates the DoublePIR second level; the CDKS packing and
+modulus-switching stages that dominate the noise budget are identical.
+
+This analysis follows the same general methodology as the YPIR paper
+for the shared CDKS packing and modulus-switching stages: discrete
+Gaussian noise model, the independence heuristic for intermediate
+error terms, the $d^{-1} \bmod q$ pre-scaling and its restoration
+during packing, split modulus switching with the same target moduli,
+and a subgaussian tail bound with union bound over output slots. The
+paper tracks subgaussian width parameters ($\sigma^2$) while this ZIP
+tracks variance ($s^2 = \sigma^2/(2\pi)$); these are equivalent in
+the tail bound. The paper's CDKS noise accumulation term
+$(d_2^2 - 1)(t d_2 z^2)/3$ matches this ZIP's
+$(d^2 - 1)/3 \cdot V_\text{ks}$.
+
+The only structural difference is that the YPIR paper's noise budget
+must also accommodate the DoublePIR second level, so the parameters
+selected for default YPIR provide additional correctness headroom when
+used for YPIR+SP. No discrepancy identified here appears to threaten
+the $\delta \leq 2^{-40}$ target.
+
+
 # Rationale
 
 ## Retrieval Scheme Versioning
@@ -1989,11 +2664,18 @@ would produce at most $2^{21} \approx 2$ million Tier 2 rows. At the
 current row size this yields approximately 48 GB, still within the
 64 GB bound.
 
-The YPIR authors provide a concrete security analysis for the parameter
-family underlying these choices in [^YPIR], targeting at least 128-bit
-computational security with correctness error at most $2^{-40}$. The
-shared-modulus YPIR+SP constants above are taken from the referenced
-implementation used by this ZIP.
+The YPIR paper [^YPIR] targets 128-bit computational security with
+correctness error at most $2^{-40}$ for this parameter family. The
+independent analysis in [Noise Analysis] supports the following
+model-qualified conclusion for this ZIP: for the selector Ring-LWE
+instance, the binding estimate is 131.5 bits under Matzov and 104.0
+bits under Core-SVP (see [Hardness Estimates]), while the stage-by-stage
+noise budget yields a correctness error of $\leq 2^{-66}$ (see
+[Correctness Analysis]). The Kyber512 calibration in
+[Kyber512 Calibration] provides additional heuristic context for the
+cost-model gap, but is not an independent hardness proof for this PIR
+instance. The shared-modulus YPIR+SP constants are taken from the
+referenced implementation used by this ZIP.
 
 ## Rationale for representing $q$ as two primes
 
@@ -2434,6 +3116,7 @@ queries are always transmitted, regardless of any failure at the
 cryptographic, decoding, or application layer while processing the
 Tier 1 response.
 
+
 # Deployment
 
 This section will be completed before this ZIP advances to Proposed
@@ -2475,6 +3158,36 @@ three-tier Poseidon tree, the Tier 1 / Tier 2 query orchestration described in t
 
 [^Regev2024]: [On Lattices, Learning with Errors, Random Linear Codes, and Cryptography](https://arxiv.org/abs/2401.03703). Oded Regev. arXiv:2401.03703v1 [cs.CR], January 2024. Updated and corrected version of a paper originally published under the same title [in STOC 2005](https://doi.org/10.1145/1568318.1568324).
 
+[^Albrecht2015]: [On the concrete hardness of Learning with Errors](https://doi.org/10.1515/jmc-2015-0016). Martin R. Albrecht, Rachel Player, and Sam Scott. Journal of Mathematical Cryptology 9(3):169–203, 2015.
+
+[^LiuNgu2013]: [Solving BDD by Enumeration: An Update](https://doi.org/10.1007/978-3-642-36095-4_19). Mingjie Liu and Phong Q. Nguyen. Topics in Cryptology – CT-RSA 2013, pp. 293–309.
+
+[^Peikert2016]: [A Decade of Lattice Cryptography](https://eprint.iacr.org/2015/939.pdf). Chris Peikert. Foundations and Trends in Theoretical Computer Science 10(4):283–424, 2016.
+
+[^LPR2013]: [On Ideal Lattices and Learning with Errors over Rings](https://eprint.iacr.org/2012/230.pdf). Vadim Lyubashevsky, Chris Peikert, and Oded Regev. Journal of the ACM 60(6):43:1–43:35, 2013.
+
+[^LaaMosPol2015]: [Finding shortest lattice vectors faster using quantum search](https://doi.org/10.1007/s10623-015-0067-5). Thijs Laarhoven, Michele Mosca, and Joop van de Pol. Designs, Codes and Cryptography 77(2-3):375–400, 2015.
+
+[^Matzov2022]: [Report on the Security of LWE: Improved Dual Lattice Attack](https://zenodo.org/records/6412487). Matzov, April 2022.
+
+[^Ducas2022]: [Estimating the Hidden Overheads in the BDGL Lattice Sieving Algorithm](https://eprint.iacr.org/2022/922). Léo Ducas. Cryptology ePrint Archive 2022/922. Published in PQ Crypto 2022.
+
+[^Kyber]: [CRYSTALS – Kyber: a CCA-secure module-lattice-based KEM](https://eprint.iacr.org/2017/634.pdf). Joppe Bos, Léo Ducas, Eike Kiltz, Tancrède Lepoint, Vadim Lyubashevsky, John M. Schanck, Peter Schwabe, Gregor Seiler, and Damien Stehlé. Cryptology ePrint Archive 2017/634. Published in IEEE European Symposium on Security and Privacy (EuroS&P), 2018.
+
+[^Kyber-CoreSVP]: [CRYSTALS – Kyber, Section 6: Core-SVP hardness](https://eprint.iacr.org/2017/634.pdf). Bos et al., 2018.
+
+[^CDW2017]: [Short Stickelberger Class Relations and Application to Ideal-SVP](https://eprint.iacr.org/2016/885.pdf). Ronald Cramer, Léo Ducas, and Benjamin Wesolowski. Advances in Cryptology – EUROCRYPT 2017, pp. 324–348.
+
+[^PHS2019]: [Approx-SVP in Ideal Lattices with Pre-processing](https://eprint.iacr.org/2019/215.pdf). Alice Pellet-Mary, Guillaume Hanrot, and Damien Stehlé. Advances in Cryptology – EUROCRYPT 2019, pp. 685–716.
+
+[^DPW2019]: [On the Shortness of Vectors to be Found by the Ideal-SVP Quantum Algorithm](https://eprint.iacr.org/2019/1161.pdf). Léo Ducas, Maxime Plançon, and Benjamin Wesolowski. Advances in Cryptology – CRYPTO 2019, pp. 322–351.
+
+[^NewHope]: [Post-quantum key exchange – a new hope](https://cryptojedi.org/papers/newhope-20190710.pdf). Erdem Alkim, Léo Ducas, Thomas Pöppelmann, and Peter Schwabe. USENIX Security Symposium, 2016. See Section 6.1 (Methodology: the core SVP hardness).
+
+[^NIST-Kyber-FAQ]: [Kyber-512 FAQ](https://csrc.nist.gov/csrc/media/Projects/post-quantum-cryptography/documents/faq/Kyber-512-FAQ.pdf). NIST Post-Quantum Cryptography project, December 2023.
+
+[^Bernstein2020]: [A discretization attack](https://cr.yp.to/papers/discretization-20200918.pdf). Daniel J. Bernstein, 2020.
+
 [^ChaCha20]: [ChaCha20 and Poly1305 for IETF Protocols (RFC 8439)](https://www.rfc-editor.org/rfc/rfc8439)
 
 [^Poseidon]: [Poseidon: A New Hash Function for Zero-Knowledge Proof Systems](https://eprint.iacr.org/2019/458)
@@ -2482,6 +3195,8 @@ three-tier Poseidon tree, the Tier 1 / Tier 2 query orchestration described in t
 [^nullifier-pir-impl]: [Nullifier PIR reference implementation](https://github.com/valargroup/vote-nullifier-pir)
 
 [^ypir-impl]: [YPIR reference implementation (artifact branch)](https://github.com/menonsamir/ypir/tree/artifact)
+
+[^ypir-issue-1]: [YPIR author clarification on LWE estimator parameters (GitHub issue #1, comment by Samir Menon)](https://github.com/menonsamir/ypir/issues/1#issuecomment-1967365470). February 2024.
 
 [^protocol-pallasandvesta]: [Zcash Protocol Specification, Section 5.4.9.6: Pallas and Vesta](protocol/protocol.pdf#pallasandvesta)
 
