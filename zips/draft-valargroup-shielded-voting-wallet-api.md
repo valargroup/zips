@@ -86,6 +86,9 @@ using the wire formats in this specification. Proof construction is
 specified in companion ZIPs.
 - A wallet can submit encrypted vote shares to helper servers and
 confirm their on-chain inclusion.
+- Each protocol component (vote server, vote protocol, tally method,
+PIR) can be versioned and upgraded independently. A change to one
+component has no impact on other components or the configuration schema.
 
 # Non-requirements
 
@@ -103,6 +106,20 @@ This section provides an informational overview of the end-to-end
 sequence a wallet follows to participate in a shielded voting round.
 Each step references the normative section that specifies its details.
 All requirements use the language defined in those sections.
+
+The vote configuration itself is versioned by `config_version`, which
+tracks the schema of the configuration document. It also carries four
+independently versioned protocol components:
+
+- **`vote_protocol`** — the ZKP circuits (ZKP1, ZKP2, ZKP3) and
+  commitment tree structure. The circuits are designed to be
+  upgradeable: a new circuit version bumps `vote_protocol` without
+  affecting the other components.
+- **`tally`** — threshold decryption and result aggregation.
+- **`pir`** — the nullifier PIR retrieval scheme.
+- **`vote_server`** — the helper server API that vote shares are submitted to.
+
+See [Version Handling] for the normative rules.
 
 ## Discovery and Validation
 
@@ -217,7 +234,8 @@ participate in the round.
   ],
   "supported_versions": {
     "pir": ["v0", "v1"],
-    "vote_circuits": "v0",
+    "vote_protocol": "v0",
+    "tally": "v0",
     "vote_server": "v1"
   }
 }
@@ -226,20 +244,21 @@ participate in the round.
 ### Field Definitions
 
 
-| Field                              | Type             | Description                                                                                                                 |
-| ---------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `config_version`                   | integer          | Schema version of this configuration document. Currently 1.                                                                 |
-| `vote_round_id`                    | string           | Hex-encoded 32-byte vote round identifier (64 characters, lowercase).                                                       |
-| `title`                            | string           | Short human-readable title for the vote round.                                                                              |
-| `description`                      | string           | Human-readable description of the vote round.                                                                               |
+| Field                              | Type             | Description                                                                                                                    |
+| ---------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `config_version`                   | integer          | Schema version of this configuration document. Currently 1.                                                                    |
+| `vote_round_id`                    | string           | Hex-encoded 32-byte vote round identifier (64 characters, lowercase).                                                          |
+| `title`                            | string           | Short human-readable title for the vote round.                                                                                 |
+| `description`                      | string           | Human-readable description of the vote round.                                                                                  |
 | `vote_servers`                     | array            | One or more vote server base URLs serving both chain and helper endpoints. Each entry has `url` (string) and `label` (string). |
-| `pir_endpoints`                    | array            | One or more nullifier PIR server base URLs. Each entry has `url` and `label`.                                               |
-| `snapshot_height`                  | integer          | Zcash block height at which the Orchard pool snapshot was taken.                                                            |
-| `vote_end_time`                    | integer          | Unix timestamp (seconds) after which votes are no longer accepted.                                                          |
-| `proposals`                        | array            | Ordered list of proposals. Each has `id` (integer, 1-indexed), `title` (string), and `options` (array of `{index, label}`). |
-| `supported_versions.pir`           | array of strings | PIR retrieval scheme versions supported by the servers (e.g., `["v0", "v1"]`).                                              |
-| `supported_versions.vote_circuits` | string           | Vote circuit version (e.g., `"v0"`).                                                                                        |
-| `supported_versions.vote_server`   | string           | Vote server version covering the REST API and tally method (e.g., `"v1"`).                                                  |
+| `pir_endpoints`                    | array            | One or more nullifier PIR server base URLs. Each entry has `url` and `label`.                                                  |
+| `snapshot_height`                  | integer          | Zcash block height at which the Orchard pool snapshot was taken.                                                               |
+| `vote_end_time`                    | integer          | Unix timestamp (seconds) after which votes are no longer accepted.                                                             |
+| `proposals`                        | array            | Ordered list of proposals. Each has `id` (integer, 1-indexed), `title` (string), and `options` (array of `{index, label}`).    |
+| `supported_versions.pir`           | array of strings | PIR retrieval scheme versions supported by the servers (e.g., `["v0", "v1"]`).                                                 |
+| `supported_versions.vote_protocol` | string           | Vote protocol version covering the ZKP circuits and commitment tree structure (e.g., `"v0"`).                                  |
+| `supported_versions.tally`         | string           | Tally method version covering threshold decryption and result aggregation (e.g., `"v0"`).                                      |
+| `supported_versions.vote_server`   | string           | Vote server version covering the REST API (e.g., `"v1"`).                                                                      |
 
 
 ### Validation Rules
@@ -257,10 +276,10 @@ specification defines version 1.
 - Proposal `id` values MUST be unique and in the range 1 to 15.
 - Option `index` values within a proposal MUST be unique and 0-indexed.
 - The wallet MUST check version compatibility as specified in
-[Version Handling]. In summary: `supported_versions.vote_server` and
-`supported_versions.vote_circuits` MUST be recognized versions, and
-`supported_versions.pir` MUST contain at least one version the wallet
-supports.
+[Version Handling]. In summary: `supported_versions.vote_server`,
+`supported_versions.vote_protocol`, and `supported_versions.tally`
+MUST be recognized versions; `supported_versions.pir` MUST contain
+at least one version the wallet supports.
 
 ### Distribution
 
@@ -303,7 +322,7 @@ Returns the active voting round, if any.
 | `vote_end_time`      | uint64            | Unix timestamp (seconds).                                            |
 | `nullifier_imt_root` | base64 (32 bytes) | Nullifier non-membership tree root.                                  |
 | `nc_root`            | base64 (32 bytes) | Orchard note commitment tree root.                                   |
-| `status`             | uint32            | Session status enum (4=PENDING, 1=ACTIVE, 2=TALLYING, 3=FINALIZED). |
+| `status`             | uint32            | Session status enum (4=PENDING, 1=ACTIVE, 2=TALLYING, 3=FINALIZED).  |
 | `ea_pk`              | base64 (32 bytes) | Election authority public key (compressed Pallas point).             |
 | `proposals`          | array             | Proposals with `id` (uint32), `title`, `description`, and `options`. |
 | `description`        | string            | Human-readable round description.                                    |
@@ -432,11 +451,11 @@ copy of the vote commitment tree.
 entry represents one block:
 
 
-| Field         | Type                        | Description                                                          |
-| ------------- | --------------------------- | -------------------------------------------------------------------- |
-| `height`      | uint64                      | Block height.                                                        |
-| `start_index` | uint64                      | Index of the first leaf appended in this block.                      |
-| `leaves`      | array of base64 (32 bytes)  | Commitment leaves (Pallas base field elements, little-endian each).  |
+| Field         | Type                       | Description                                                         |
+| ------------- | -------------------------- | ------------------------------------------------------------------- |
+| `height`      | uint64                     | Block height.                                                       |
+| `start_index` | uint64                     | Index of the first leaf appended in this block.                     |
+| `leaves`      | array of base64 (32 bytes) | Commitment leaves (Pallas base field elements, little-endian each). |
 
 
 ### Tally Results
@@ -689,13 +708,13 @@ follows the rules in [Version Handling].
 
 ## Version Handling
 
-All version strings in `supported_versions` follow Semantic Versioning
-[^semver] and use the form `"v" MAJOR` (e.g., `"v0"`, `"v1"`). A
-wallet that supports major version N is compatible with any release
-N.x.y of that component.
+All version strings in `supported_versions` use the form `"v" MAJOR`
+(e.g., `"v0"`, `"v1"`). A major version bump indicates a
+breaking change; within the same major version, implementations remain
+compatible.
 
 A wallet MUST reject the configuration if it does not support the
-advertised `vote_server` or `vote_circuits` version, or if
+advertised `vote_server`, `vote_protocol`, or `tally` version, or if
 `pir` contains no version it supports. If any check fails, the wallet
 MUST NOT proceed and SHOULD prompt the user to update.
 
@@ -709,11 +728,14 @@ value of `"v1"` uses the `/shielded-vote/v1/` prefix.
 ### Relationship to `config_version`
 
 `config_version` versions the structure of the vote configuration JSON
-document itself (field names, types, nesting). `vote_server` versions
-the REST API behavior and tally semantics. The two can evolve
-independently: a structural change to the config schema (e.g., adding
-a new required top-level field) bumps `config_version`, while a change
-to endpoint behavior or tally method bumps `vote_server`.
+document itself (field names, types, nesting). The component versions
+(`vote_server`, `vote_protocol`, `tally`, `pir`) version protocol
+behavior. These can all evolve independently: a structural change to
+the config schema (e.g., adding a new required top-level field) bumps
+`config_version`, while a change to endpoint behavior bumps
+`vote_server`, a change to circuits or tree structure bumps
+`vote_protocol`, and a change to decryption or aggregation bumps
+`tally`.
 
 ## Transaction Lifecycle
 
@@ -745,12 +767,12 @@ described in this section.
 ### Cryptographic Types
 
 
-| Type                      | Size     | Encoding                                                                                                      |
-| ------------------------- | -------- | ------------------------------------------------------------------------------------------------------------- |
-| Pallas base field element | 32 bytes | Little-endian canonical representation. Implementations MUST reject values >= the Pallas base field modulus.   |
-| Compressed Pallas point   | 32 bytes | Standard Pallas point compression. [^protocol]                                                                |
+| Type                      | Size     | Encoding                                                                                                     |
+| ------------------------- | -------- | ------------------------------------------------------------------------------------------------------------ |
+| Pallas base field element | 32 bytes | Little-endian canonical representation. Implementations MUST reject values >= the Pallas base field modulus. |
+| Compressed Pallas point   | 32 bytes | Standard Pallas point compression. [^protocol]                                                               |
 | ElGamal ciphertext        | 64 bytes | `C1` (32 bytes) followed by `C2` (32 bytes), each a compressed Pallas point.                                 |
-| Halo 2 proof              | variable | Opaque byte sequence.                                                                                         |
+| Halo 2 proof              | variable | Opaque byte sequence.                                                                                        |
 | RedPallas signature       | 64 bytes | `R` (32 bytes) followed by `s` (32 bytes).                                                                   |
 
 
@@ -763,14 +785,14 @@ Section 4 [^rfc4648]).
 - **`vote_round_id`**: The encoding of `vote_round_id` varies by
 context. The following table lists every occurrence and its encoding:
 
-| Context                                          | Encoding                         |
-| ------------------------------------------------ | -------------------------------- |
-| Vote configuration JSON (`vote_round_id` field)  | Hex (64 lowercase characters)    |
-| URL path parameters (`{round_id}`, `{roundId}`)  | Hex (64 lowercase characters)    |
-| Delegation request body (`vote_round_id`)         | Base64 (32 bytes)                |
-| Vote commitment request body (`vote_round_id`)    | Base64 (32 bytes)                |
-| Share submission request body (`vote_round_id`)   | Hex (64 lowercase characters)    |
-| Chain query response bodies (`vote_round_id`)     | Base64 (32 bytes)                |
+| Context                                         | Encoding                      |
+| ----------------------------------------------- | ----------------------------- |
+| Vote configuration JSON (`vote_round_id` field) | Hex (64 lowercase characters) |
+| URL path parameters (`{round_id}`, `{roundId}`) | Hex (64 lowercase characters) |
+| Delegation request body (`vote_round_id`)       | Base64 (32 bytes)             |
+| Vote commitment request body (`vote_round_id`)  | Base64 (32 bytes)             |
+| Share submission request body (`vote_round_id`) | Hex (64 lowercase characters) |
+| Chain query response bodies (`vote_round_id`)   | Base64 (32 bytes)             |
 - **Integers**: JSON numbers. Fields typed `uint32` or `uint64` in the
 protocol definition are encoded as JSON numbers.
 - **Enumerations**: JSON numbers corresponding to the protobuf enum
@@ -786,13 +808,16 @@ from the same `vote_servers` base URLs. In the current architecture,
 a single `svoted` process hosts every endpoint on the same port, so a
 separate helper URL is unnecessary.
 
-## Consolidated `vote_server` Version
+## Independent Component Versions
 
-The tally method and wallet-facing API are both properties of the same
-`svoted` process: the tally method is inseparable from the server that
-executes it, and the API surface is its external interface. A single
-`vote_server` version avoids combinatorial compatibility matrices and
-simplifies the upgrade path for wallet implementors.
+Each `supported_versions` field tracks a component that can change on
+its own schedule: `vote_server` covers the REST API surface,
+`vote_protocol` covers the ZKP circuits and commitment tree structure,
+`tally` covers threshold decryption and result aggregation, and `pir`
+covers nullifier retrieval. Separating these avoids forcing a
+wallet update when only one component changes — for example, a new
+tally method does not require wallets to update their proof generation
+code.
 
 ## JSON over Protobuf
 
@@ -803,10 +828,6 @@ trade-off in message size is acceptable for the request and response
 volumes involved.
 
 # Open issues
-
-- The vote configuration distribution mechanism is intentionally not
-specified, leaving it up to the voting authority to define the working
-process which may be standardized as needed.
 
 # Reference implementation
 
@@ -835,5 +856,3 @@ is available at
 [^ea-ceremony]: [Draft ZIP: Election Authority Key Ceremony](draft-valargroup-ea-key-ceremony.md)
 
 [^zip-244]: [ZIP 244: Transaction Identifier Non-Malleability](zip-0244.rst)
-
-[^semver]: [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html)
