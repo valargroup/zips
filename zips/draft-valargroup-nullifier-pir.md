@@ -2003,22 +2003,21 @@ below. No known algebraic attack achieves better concrete cost than
 lattice reduction against unstructured LWE at comparable parameters. 
 
 The argument chains together as follows. The worst-case reduction of
-Lyubashevsky, Peikert, and Regev [^LPR2013] establishes that breaking
-Ring-LWE requires solving worst-case Ideal-SVP with approximation factor
-$\gamma = \text{poly}(n)$. The best known quantum algorithms for
-Ideal-SVP, due to Cramer, Ducas, and Wesolowski [^CDW2017] and
-Pellet-Mary, Hanrot, and Stehlé [^PHS2019], achieve only
-$\gamma = \exp(\tilde{O}(\sqrt{n}))$. Experimental analysis by Ducas,
+Lyubashevsky, Peikert, and Regev [^LPR2013] (Theorem 3.6) establishes
+that breaking Ring-LWE requires solving worst-case Ideal-SVP with
+approximation factor $\gamma = \tilde{O}(\sqrt{n}/\alpha)$, where
+$\alpha$ parameterizes the error width. The best known quantum
+algorithms for Ideal-SVP [^CDW2017] [^PHS2019] achieve only
+$\gamma = \exp(\Theta(\sqrt{n}))$; experimental analysis by Ducas,
 Plançon, and Wesolowski [^DPW2019] confirms that the effective
 approximation factors remain exponentially large at cryptographic
-dimensions. For this ZIP's ring degree $n = 2048$, an attacker would
-need to achieve approximation factor
-$\gamma = \text{poly}(2048) \approx 10^{3}\text{--}10^{20}$
-(depending on the polynomial degree in the reduction), while the best
-known algorithms only achieve the much larger (i.e., easier)
-$\gamma = \exp(\tilde{O}(\sqrt{2048})) \approx \exp(\tilde{O}(45))$.
-Since smaller approximation factors are harder to achieve,
-these algorithms fall far short of what breaking Ring-LWE would require.
+dimensions. For the parameters used in this ZIP, the approximation
+factor required by the reduction is polynomial in $n$ (determined by
+$q$, $\sigma$, and $n$ via Theorem 3.6), while the achievable
+approximation factors are exponential in $\sqrt{n}$. Since smaller
+approximation factors are harder to achieve, these algorithms fall far
+short of what breaking Ring-LWE would require.
+
 
 The same methodology is used by NIST for evaluating ML-KEM (Kyber),
 which relies on Module-LWE over the same family of rings [^NIST-Kyber-FAQ].
