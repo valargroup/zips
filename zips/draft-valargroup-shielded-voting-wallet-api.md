@@ -9,7 +9,7 @@ Status: Draft
 Category: Standards / Wallet
 Created: 2026-03-24
 License: MIT
-Pull-Request: <https://github.com/zcash/zips/pull/???>
+Pull-Request: <https://github.com/zcash/zips/pull/1244>
 ```
 
 # Terminology
