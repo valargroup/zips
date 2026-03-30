@@ -1972,9 +1972,9 @@ This section catalogs the three hardness instances, their parameters,
 and the concrete hardness estimates.
 
 The lattice-estimator outputs reported in [Hardness Estimates]
-evaluate the selector instance by applying the estimator to the
-corresponding RLWE parameters. They do not quantify the
-circular-security / KDM assumption for the packing key.
+evaluate both the selector and packing-key RLWE instances by applying
+the estimator to the corresponding LWE parameters. They do not
+quantify the circular-security / KDM assumption for the packing key.
 
 In all instances, the discrete Gaussian width parameter is
 $\sigma = 6.4\sqrt{2\pi} \approx 16.03$, corresponding to standard
@@ -2092,6 +2092,13 @@ plaintext (addressed in [Circular Security] below), each ciphertext
 is a standard RLWE sample
 $(-\rho_{r,u},\; \rho_{r,u} \cdot s^\star + e_{r,u})$.
 
+Following the same methodology used for the selector, each RLWE
+sample is analyzed as scalar LWE via negacyclic extraction: the ring
+element $\rho_{r,u}$ determines a $d \times d$ negacyclic matrix, and
+the single ring ciphertext yields $d = 2048$ scalar LWE samples
+under the coefficient vector of $s^\star$. The 33 ring-level samples
+therefore expand to $33 \times 2048 = 67\,584$ scalar LWE samples.
+
 | Parameter | Value |
 |---|---|
 | Ring degree $d$ | $2048$ |
@@ -2099,15 +2106,15 @@ $(-\rho_{r,u},\; \rho_{r,u} \cdot s^\star + e_{r,u})$.
 | Modulus $q$ | $\approx 2^{55.89}$ (same as selector) |
 | Secret distribution | Coefficients of $s^\star$ from $D_{\mathbb{Z},\sigma}$ (stddev $6.4$) |
 | Error distribution | $e_{r,u} \leftarrow D_{\mathbb{Z},\sigma}^d$ per ciphertext (stddev $6.4$) |
-| Samples | $33$ per query ($11$ automorphisms $\times$ $3$ gadget digits) |
+| Ring-level samples | $33$ per query ($11$ automorphisms $\times$ $3$ gadget digits) |
+| Scalar LWE samples $m$ | $67\,584$ ($33 \times 2048$, via negacyclic extraction) |
 | Public elements | $\rho_{r,u} \in R_q$ pseudorandom from $\mathsf{seed\_pack}$ (ChaCha20) |
 
-Each query uses a fresh $s^\star$, so at most 33 RLWE samples are
-available from any single key. Across queries, the shared
-$\mathsf{seed\_pack}$ yields the same public elements $\rho_{r,u}$,
-but independent secrets prevent combining samples across queries.
-Because only 33 samples are available per key, this instance has
-substantially more security margin than the selector Ring-LWE instance.
+Each query uses a fresh $s^\star$, so at most 33 RLWE samples (equivalently
+$67\,584$ scalar LWE samples) are available from any single key. Across
+queries, the shared $\mathsf{seed\_pack}$ yields the same public elements
+$\rho_{r,u}$, but independent secrets prevent combining samples across
+queries.
 
 ### Circular Security
 
@@ -2139,11 +2146,11 @@ automorphism-based key switching. No attack is known that exploits
 this KDM structure for the parameter sizes used in this ZIP.
 
 Under standard RLWE, if one ignores the key-dependent plaintexts, the
-packing-key ciphertexts expose only 33 RLWE samples per query, which is
-too few for any known lattice attack at these parameters; the estimator
-therefore reports infinite cost for the packing-key RLWE proxy.
-However, this does not establish security for the circular-security /
-KDM assumption. That assumption requires RLWE to remain hard even when
+packing-key ciphertexts expose 33 RLWE samples (equivalently $67\,584$
+scalar LWE samples) per query. The lattice estimator reports hardness
+essentially identical to the Tier 2 selector instance (see [Hardness
+Estimates]). However, these estimates do not establish security for the
+circular-security / KDM assumption. That assumption requires RLWE to remain hard even when
 the adversary is given encryptions of the known linear functions
 $B_\mathsf{ks}^u \cdot \tau_{k_r}(s^\star)$ under the same secret
 $s^\star$. No attack is known that exploits this structure for the
@@ -2157,8 +2164,8 @@ assumption.
 |---|---|---|---|---|---|---|
 | Selector RLWE (Tier 2, binding) | Ring-LWE | $2048$ | $55.9$ | $6.4$ | $262\,144$ | Negacyclic blocks ($128$ ring elements) |
 | Selector RLWE (Tier 1) | Ring-LWE | $2048$ | $55.9$ | $6.4$ | $2\,048$ | Negacyclic block ($1$ ring element) |
-| Packing-key RLWE | RLWE | $2048$ | $55.9$ | $6.4$ | $33$ | Pseudorandom (ChaCha20 seed) |
-| Packing-key circular security | KDM-RLWE | $2048$ | $55.9$ | $6.4$ | $33$ | + encrypts $B_\mathsf{ks}^u \cdot \tau_{k_r}(s^\star)$ under $s^\star$ |
+| Packing-key RLWE | Ring-LWE | $2048$ | $55.9$ | $6.4$ | $67\,584$ | Negacyclic blocks ($33$ ring elements) |
+| Packing-key circular security | KDM-RLWE | $2048$ | $55.9$ | $6.4$ | $67\,584$ | + encrypts $B_\mathsf{ks}^u \cdot \tau_{k_r}(s^\star)$ under $s^\star$ |
 
 ### Hardness Estimates
 
@@ -2178,15 +2185,19 @@ BDD (Babai nearest plane [^LiuNgu2013]), and the Matzov dual hybrid.
 | Selector RLWE (Tier 2) | dual hybrid | 360 | 105.1 | 134.5 |
 | Selector RLWE (Tier 1) | uSVP | 357 | 104.2 | 132.8 |
 | Selector RLWE (Tier 1) | BDD | 357 / 352 | 104.6 | 131.7 |
-| Packing-key RLWE ($m = 33$) | all | — | $\infty$ | $\infty$ |
+| Packing-key RLWE ($m = 67\,584$) | uSVP | 356 | 104.0 | 132.6 |
+| Packing-key RLWE | BDD | 356 / 351 | 104.2 | 131.5 |
+| Packing-key RLWE | dual hybrid | 360 | 105.1 | 134.5 |
 
 For the BDD rows, the $\beta$ column shows Core-SVP / Matzov block
 sizes, which differ because the two cost models shift the optimal
 lattice dimension.
 
-For the packing-key RLWE instance, 33 samples are insufficient for
-any known lattice attack; the estimator reports infinite cost under
-both models.
+The packing-key RLWE instance, analyzed with $m = 67\,584$ expanded
+scalar LWE samples (33 ring elements $\times$ 2048 coefficients),
+yields hardness estimates essentially identical to the Tier 2
+selector. This is expected: once $m \gg n$, additional samples
+provide negligible advantage to the attacker.
 
 The binding case is the Tier 2 selector. Under Core-SVP the cheapest
 attack is uSVP at $\beta = 356$, giving $2^{104.0}$ bits. Under
