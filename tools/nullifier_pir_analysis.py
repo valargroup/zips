@@ -73,8 +73,12 @@ from sage.all import oo  # noqa: E402
 # ---------------------------------------------------------------------------
 Q = 268_369_921 * 249_561_089
 N = 2048
+D = 2048  # ring degree
 STDDEV = 6.4
 M_TIER2 = 262_144
+M_TIER1 = D  # 1 ring element × 2048 coefficients
+PACKING_RING_SAMPLES = 33  # 11 automorphisms × 3 gadget digits
+M_PACKING = PACKING_RING_SAMPLES * D  # expanded to scalar LWE: 67,584
 
 # Classical cost models: the conservative lower bound (Core-SVP / ADPS16) and
 # the more realistic MATZOV model that accounts for progressive BKZ,
@@ -410,6 +414,70 @@ def print_quantum_estimates():
     return results
 
 
+def print_packing_key_estimates():
+    """Estimate hardness of the packing-key RLWE instance.
+
+    The packing key consists of 33 RLWE ciphertexts.  Following the same
+    methodology used for the selector (analyzing Ring-LWE as scalar LWE),
+    each ring sample expands to D=2048 scalar LWE samples via negacyclic
+    extraction, giving m = 33 × 2048 = 67,584 total samples.
+    """
+    print()
+    print("=" * 72)
+    print("PACKING-KEY RLWE ESTIMATES")
+    print(f"  {PACKING_RING_SAMPLES} ring samples × {D} coefficients "
+          f"= {M_PACKING} scalar LWE samples")
+    print("=" * 72)
+
+    pk_par = LWE.Parameters(
+        n=N, q=Q,
+        Xs=ND.DiscreteGaussian(STDDEV),
+        Xe=ND.DiscreteGaussian(STDDEV),
+        m=M_PACKING,
+        tag="Packing-key RLWE",
+    )
+    print(f"\n  Parameters: {pk_par}")
+
+    pk_results = {}
+    for model_name, model in MODELS:
+        print(f"\n  [Packing-key — {model_name}]")
+        res = estimate_rough(pk_par, model)
+        for alg in res:
+            if res[alg]["rop"] != oo:
+                print(f"    {alg:20s} :: {res[alg]!r}")
+        bits, beta = extract_results(res)
+        pk_results[model_name] = (bits, beta)
+
+    print()
+    print("  PACKING-KEY vs SELECTOR COMPARISON:")
+    print("  ┌──────────────────────────────────┬──────────┬──────────────┬──────────────┐")
+    print("  │ Instance                         │ m        │ Core-SVP     │ MATZOV       │")
+    print("  ├──────────────────────────────────┼──────────┼──────────────┼──────────────┤")
+
+    for label, m_val, results in [
+        ("Selector Tier 1 (1 ring elem)", M_TIER1, None),
+        (f"Packing key ({PACKING_RING_SAMPLES} ring elems)", M_PACKING, pk_results),
+        ("Selector Tier 2 (128 ring elems)", M_TIER2, None),
+    ]:
+        if results:
+            core = results.get("Core-SVP (ADPS16)", (None, None))[0]
+            mat = results.get("MATZOV 2022", (None, None))[0]
+            c_str = f"{core:.1f}" if core else "N/A"
+            m_str = f"{mat:.1f}" if mat else "N/A"
+        else:
+            c_str = "(see above)"
+            m_str = "(see above)"
+        print(f"  │ {label:<32s} │ {m_val:>8,d} │ {c_str:>12s} │ {m_str:>12s} │")
+
+    print("  └──────────────────────────────────┴──────────┴──────────────┴──────────────┘")
+    print()
+    print(f"  With {M_PACKING:,d} scalar samples the packing-key instance is well")
+    print("  within the same hardness range as both selector tiers.")
+    print("  The binding case remains the Tier 2 selector (most samples).")
+
+    return pk_results
+
+
 def main():
     print("lattice-estimator:", _ESTIMATOR_ROOT)
     try:
@@ -422,6 +490,7 @@ def main():
 
     kyber_beta, pir_results = print_kyber_calibration()
     print_cost_model_ladder(kyber_beta, pir_results)
+    print_packing_key_estimates()
     print_sensitivity_sweep()
     print_quantum_estimates()
 
