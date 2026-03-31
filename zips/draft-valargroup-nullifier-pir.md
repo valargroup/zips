@@ -86,20 +86,21 @@ only in how the client retrieves authentication path data from the
 server.
 
 **Full download:** The client downloads the complete
-exclusion tree data (the Tier 0 plaintext, all Tier 1 rows, and all
-leaf records) and locally computes Tier 2 internal node hashes on
-demand. This scheme requires no cryptographic interaction with the server
+exclusion tree data (the Tier 0 plaintext, all Tier 1 rows, and the
+sorted nullifier list) and locally reconstructs leaf triples and
+computes Tier 2 internal node hashes on demand. This scheme requires no cryptographic interaction with the server
 and leaks no information about which nullifier the client is checking,
 at the cost of a larger download comprising:
 
 1. Tier 0 plaintext (49 KB)
 2. All Tier 1 rows (2 MB)
-3. All leaf records (96 bytes each).
+3. The sorted nullifier list (32 bytes per element).
 
-For a full depth-25 tree ($2^{25}$ leaves), the total is
-$49{,}120 + 2{,}097{,}152 + 96 \times 2^{25} \approx 3.2$ GB
-(~3.00 GiB); at mainnet height 3,268,870 (~24.9 million real leaves)
-the total is ~2.23 GiB, uncompressed.
+With $n_\mathsf{nf}$ sorted nullifiers, the total is
+$49{,}120 + 2{,}097{,}152 + 32 \cdot n_\mathsf{nf}$ bytes.
+At approximately 50 million sorted nullifiers (early 2026), this
+is approximately 1.48 GiB. The nullifier data is nearly
+incompressible, as nullifiers are essentially random field elements.
 
 **PIR (YPIR+SP):** The client retrieves authentication path data
 via two sequential PIR queries using YPIR+SP [^YPIR], a single-server
@@ -275,8 +276,9 @@ is ~49 KB, computed as follows:
 Similar analysis applies for every other tier, where the number of rows in a tier is $2^{initial\_depth}$. Lowering the number of initial rows is the primary optimization target.
 
 This ZIP specifies two retrieval schemes. Under full download, the
-client downloads Tier 0, all Tier 1 rows, and all leaf records, then
-computes Tier 2 internal nodes locally for each note. Under PIR retrieval,
+client downloads Tier 0, all Tier 1 rows, and the sorted nullifier
+list, then reconstructs leaf triples and computes Tier 2 internal
+nodes locally for each note. Under PIR retrieval,
 each proof retrieval consists of the Tier 0 plaintext download plus two
 sequential PIR queries:
 
@@ -399,9 +401,9 @@ punctured interval $(\mathsf{nf\_lo}, \mathsf{nf\_hi}) \setminus
 so every gap between adjacent nullifiers is covered by exactly one leaf.
 
 **Leaf count.** With K=2, approximately $n/2$ leaves are needed for $n$
-sorted nullifiers. As of early 2026 the Orchard pool contains
-approximately 51 million nullifiers; with sentinels, this yields
-approximately 25.5 million leaves — within the $2^{25} \approx 33.5$
+sorted nullifiers. As of Mainnet block height 3,268,870 the Orchard
+pool contains 49,813,784 nullifiers; with sentinels, this yields
+approximately 24.9 million leaves — within the $2^{25} \approx 33.5$
 million capacity of the depth-25 tree.
 
 Implementations MUST verify that no punctured range has outer span
@@ -527,18 +529,19 @@ A server supporting full download MUST make the following data available:
    bytes total): the complete set of Tier 1 row data as specified in
    [Tier 1: Small PIR (Depths 9–15)], concatenated in row-index order.
 
-3. **All leaf records** ($n$ records, each 96 bytes): every real
-   (non-empty) punctured-range leaf in the depth-25 tree, serialized in
-   ascending order by $\mathsf{nf\_lo}$. Each record is a 96-byte triple
-   $[\mathsf{nf\_lo} \| \mathsf{nf\_mid} \| \mathsf{nf\_hi}]$ using the
-   same encoding specified in [Leaf Encoding]. The server MUST also
-   provide the count of real leaf records $n$ so that clients can
-   distinguish real leaves from the canonical empty padding.
+3. **Sorted nullifier list** ($|S|$ elements, each 32 bytes): the
+   complete sorted set $S$ of nullifiers and sentinels from
+   [Nullifier Exclusion Tree] Step 2, after deduplication. Each element
+   is a 32-byte little-endian representation of an element of
+   $\mathbb{F}_{q_\mathbb{P}}$, serialized in ascending order. The
+   server MUST also provide the count $|S|$ so that clients can compute
+   the real leaf count $(|S| - 1) / 2$ and reconstruct leaf triples as
+   described in [Client Procedure (Full Download)].
 
-For a full depth-25 tree ($2^{25}$ leaves), the total download is
-approximately 3.2 GB (dominated by the leaf records). With standard
-HTTP compression (e.g., gzip or zstd), this is expected to be
-significantly smaller.
+At approximately 50 million sorted nullifiers (early 2026), the total
+download is approximately 1.48 GiB, dominated by the nullifier data.
+This data is nearly incompressible, as nullifiers are essentially
+random field elements.
 
 ### Client Procedure (Full Download)
 
@@ -557,10 +560,13 @@ For each note whose nullifier exclusion proof is needed:
    hashes.
 
 3. **Tier 2 row computation**: Compute the Tier 2 row index as
-   $S_1 \times 64 + S_2$. Extract the 1,024 leaf records for this
-   row from the downloaded leaf data (leaf indices
-   $[\text{row} \times 1{,}024, \; \text{row} \times 1{,}024 + 1{,}023]$).
-   For indices beyond the real leaf count, use the canonical empty leaf
+   $S_1 \times 64 + S_2$. The 1,024 leaf indices for this row are
+   $i \in [\text{row} \times 1{,}024, \; \text{row} \times 1{,}024 + 1{,}023]$.
+   Reconstruct each leaf triple from the sorted nullifier list: for leaf
+   index $i < (|S| - 1) / 2$, the triple is
+   $(\mathsf{nf\_lo}, \mathsf{nf\_mid}, \mathsf{nf\_hi}) = (s_{2i}, s_{2i+1}, s_{2i+2})$
+   where $s_j$ is the $j$-th element of the sorted list. For
+   $i \geq (|S| - 1) / 2$, use the canonical empty leaf
    $(\mathsf{nf\_lo} = 0, \mathsf{nf\_mid} = 0, \mathsf{nf\_hi} = 0)$.
 
 4. **Compute Tier 2 internal nodes**: Compute the leaf hash for each of
@@ -2657,16 +2663,17 @@ Providing two retrieval schemes addresses two distinct concerns:
    external review.
 
 2. **Bandwidth efficiency.** PIR retrieval reduces per-query bandwidth
-   from approximately 3.2 GB to approximately 1.2 MB, making it
+   from approximately 1.48 GiB to approximately 1.2 MB, making it
    practical for mobile wallets. However, its privacy guarantee depends
    on the hardness of LWE and RLWE.
 
 Full download reuses the same tree structure and tier layout as PIR
 retrieval. The Tier 0 plaintext and Tier 1 rows are served identically;
-the only difference is that full download clients download all Tier 2
-leaf records directly instead of issuing encrypted PIR queries. This
-design avoids maintaining two separate tree formats and allows servers
-to support both schemes from the same tree build.
+the only difference is that full download clients download the sorted
+nullifier list directly (and reconstruct leaf triples locally) instead
+of issuing encrypted PIR queries. This design avoids maintaining two
+separate tree formats and allows servers to support both schemes from
+the same tree build.
 
 Tier 2 rows store only leaf records (no internal nodes) in both
 retrieval schemes. The client computes approximately 2,046 Poseidon hashes
