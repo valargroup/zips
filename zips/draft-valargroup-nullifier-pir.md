@@ -146,11 +146,10 @@ the user's nullifier from the snapshot at this height — hence the name
 There is a problem though, how does the user get the exclusion proof?
 A user directly querying a centralized server for the exclusion proof would
 reveal their nullifier to the server, breaking the privacy guarantee.
-The alternative of downloading the entire set of Orchard nullifiers is 
-impractical. As of Mainnet block height 3,268,870 with 49,813,784 nullifiers,
-this would already take 1.48 GiB (assuming binary serialization). As Zcash
-scales, absent fundamental changes in the protocol design, the size of this
-set will grow without bound.
+Downloading the entire set of Orchard nullifiers to hide the query target
+is bandwidth-intensive. As of Mainnet block height 3,268,870 with
+49,813,784 nullifiers, this already takes 1.48 GiB (assuming binary
+serialization), and the set grows without bound as Zcash scales.
 
 The existing solution in the design of token holder voting prior to this ZIP is
 to not allow snapshots of balances, but instead "snapshots of balances that
@@ -531,7 +530,8 @@ A server supporting full download MUST make the following data available:
 
 3. **Sorted nullifier list** ($|S|$ elements, each 32 bytes): the
    complete sorted set $S$ of nullifiers and sentinels from
-   [Nullifier Exclusion Tree] Step 2, after deduplication. Each element
+   [Nullifier Exclusion Tree] Steps 1–3 (sentinel insertion, sorting
+   with deduplication, and odd-count adjustment). Each element
    is a 32-byte little-endian representation of an element of
    $\mathbb{F}_{q_\mathbb{P}}$, serialized in ascending order. The
    server MUST also provide the count $|S|$ so that clients can compute
@@ -2667,13 +2667,11 @@ Providing two retrieval schemes addresses two distinct concerns:
    practical for mobile wallets. However, its privacy guarantee depends
    on the hardness of LWE and RLWE.
 
-Full download reuses the same tree structure and tier layout as PIR
-retrieval. The Tier 0 plaintext and Tier 1 rows are served identically;
-the only difference is that full download clients download the sorted
-nullifier list directly (and reconstruct leaf triples locally) instead
-of issuing encrypted PIR queries. This design avoids maintaining two
-separate tree formats and allows servers to support both schemes from
-the same tree build.
+Full download shares Tier 0 and Tier 1 data with PIR retrieval; both
+are extracted from the same tree build. The only difference is that
+full download clients additionally receive the sorted nullifier list
+(the input to tree construction) and reconstruct leaf triples locally,
+rather than issuing encrypted PIR queries for Tier 2 rows.
 
 Tier 2 rows store only leaf records (no internal nodes) in both
 retrieval schemes. The client computes approximately 2,046 Poseidon hashes
