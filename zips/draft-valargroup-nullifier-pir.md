@@ -60,10 +60,10 @@ Packing key
   encrypted for the client, without learning the client's packing-level
   secret key.
 
-Interval Merkle tree
+Punctured interval Merkle tree
 
-: A Merkle tree, where each leaf commits to a continuous range of values.
-  A client proves inclusion of a value in one of the tree's intervals.
+: A Merkle tree where each leaf commits to a punctured range of values. An interval with one interior point excluded. A client proves
+  inclusion of a value in one of the tree's punctured ranges.
 
 Protocol Epoch
 
@@ -90,8 +90,16 @@ exclusion tree data (the Tier 0 plaintext, all Tier 1 rows, and all
 leaf records) and locally computes Tier 2 internal node hashes on
 demand. This scheme requires no cryptographic interaction with the server
 and leaks no information about which nullifier the client is checking,
-at the cost of a larger download (approximately 3.3 GB for the Orchard
-nullifier set of size 49,813,801 as of Mainnet block height 3,268,870).
+at the cost of a larger download comprising:
+
+1. Tier 0 plaintext (49 KB)
+2. All Tier 1 rows (2 MB)
+3. All leaf records (96 bytes each).
+
+For a full depth-25 tree ($2^{25}$ leaves), the total is
+$49{,}120 + 2{,}097{,}152 + 96 \times 2^{25} \approx 3.2$ GB
+(~3.00 GiB); at mainnet height 3,268,870 (~24.9 million real leaves)
+the total is ~2.23 GiB, uncompressed.
 
 **PIR (YPIR+SP):** The client retrieves authentication path data
 via two sequential PIR queries using YPIR+SP [^YPIR], a single-server
@@ -101,18 +109,18 @@ client-side database hint and no DB pre-processing per client. This
 makes it suited for privacy in the Zcash setting. It is also plausibly
 post-quantum for suitable parameter choices. For the Orchard nullifier
 set size above, the exclusion tree is organized into a three-tier data
-structure spanning 26 levels of depth:
+structure spanning 25 levels of depth:
 
-1. Plaintext broadcast tier (192 KB, cacheable)
-2. Small PIR tier (24 MB)
-3. Large PIR tier (6 GB).
+1. Plaintext broadcast tier (49 KB, cacheable)
+2. Small PIR tier (2 MB)
+3. Large PIR tier (3 GB).
 
-The client retrieves the 26 sibling hashes for the depth-26 PIR tree in two
-sequential PIR queries plus the plaintext download, then appends 3
+The client retrieves the 25 sibling hashes for the depth-25 PIR tree in two
+sequential PIR queries plus the plaintext download, then appends 4
 deterministic empty-subtree siblings to obtain the depth-29 authentication
-path. Total bandwidth is approximately 3.5 MB on
-the first nullifier exclusion proof request, or approximately 3.3 MB once the Tier 0 plaintext is cached
-(dominated by the Tier 2 upload).
+path. Total bandwidth is approximately 1.3 MB on
+the first nullifier exclusion proof request, or approximately 1.2 MB once the Tier 0 plaintext is cached
+(dominated by the PIR query uploads).
 
 Wallet implementations are required to support full download and can
 optionally support PIR. See [Retrieval Schemes] for the conformance
@@ -168,7 +176,7 @@ independently verify the tree against published roots. This full download
 alternative is provided due to concern due to insufficient intra-Zcash time to 
 review the PIR scheme. Providing both schemes allows wallet implementations to 
 offer a choice between bandwidth efficiency (PIR) and lower cryptographic 
-trust assumptions (full 1.6GB download).
+trust assumptions (full download).
 
 
 # Privacy Implications
@@ -250,20 +258,21 @@ root, depth-1 refers to the next layer of the merkle tree with two nodes.
 Depth-i of the tree has $2^i$ nodes.
 The nullifier exclusion tree is split into three tiers (ranges of depths):
 
-- Tier 0 contains the top levels of the tree and is downloaded in plaintext by all clients.
-- Tier 1 contains depth-11 to depth-18 subtrees and is served as a PIR database.
-- Tier 2 contains depth-18 to depth-26 subtrees and is served as a PIR database.
+- Tier 0 contains the top levels of the tree (depths 0–9) and is downloaded in plaintext by all clients.
+- Tier 1 contains depth-9 to depth-15 subtrees and is served as a PIR database.
+- Tier 2 contains depth-15 to depth-25 subtrees and is served as a PIR database.
 
-Each Tier contains every inner node hash, and information for the range of
-nullifiers in each descendant sub-tree. The reason for containing every inner 
-node hash is to reduce the amount of client hashing required. We encode the 
-range of nullifiers in each descendant sub-tree, using one 32 byte value at 
-every leaf. So Tier 0's size is 196kb, computed as follows:
-- One value for every depth=11 node, where each leaf contains (node_hash, 
- max_valid_nullifier_in_sub_tree), which is 64 bytes. This is a total of $64 * 2^11 = 131\,072 \text{bytes}$
-- Every inner node's hash, which is $32 * (2^11 - 1) = 65\,504 \text{bytes}$
+Tier 0 contains pre-computed inner node hashes, so the client reads
+sibling hashes directly without local subtree rebuilding. Tier 1 and
+Tier 2 store only leaf records (no internal nodes); the client rebuilds
+the subtree locally for each. We encode the range of nullifiers in each
+descendant sub-tree, using one 32 byte value at every leaf. Tier 0's size
+is ~49 KB, computed as follows:
+- One value for every depth-9 node, where each leaf contains (node_hash,
+  min_valid_nullifier_in_sub_tree), which is 64 bytes. This is a total of $64 * 2^{9} = 32\,768 \text{bytes}$
+- Every inner node's hash, which is $32 * (2^{9} - 1) = 16\,352 \text{bytes}$
 
-Similar analysis applies for every other tier, where the number of rows in a tier is $2^(initial\_depth)$. Lowering the number of initial rows is the primary optiomization target.
+Similar analysis applies for every other tier, where the number of rows in a tier is $2^{initial\_depth}$. Lowering the number of initial rows is the primary optimization target.
 
 This ZIP specifies two retrieval schemes. Under full download, the
 client downloads Tier 0, all Tier 1 rows, and all leaf records, then
@@ -280,11 +289,11 @@ sequential PIR queries:
    and issues a second PIR query. If there is an error in Tier 1 row retrieval, the
    client queries for a random Tier 2 row index.
 4. From Tier 0 and the recovered Tier 1 and Tier 2 rows, the client
-   reconstructs the depth-26 authentication path used for nullifier
-   non-membership.
-5. The client appends the 3 deterministic empty-subtree siblings
-   to extend the depth-26 path to depth 29 for compatibility with the
-   Claim circuit. This is to account for the future nullifier tree growth, aiming to avoid chain upgrades for verufying key updates. See "Tree Depth vs. Circuit Depth" rationale for details.
+   reconstructs the depth-25 authentication path (9 + 6 + 10 = 25
+   sibling hashes) used for nullifier non-membership.
+5. The client appends 4 deterministic empty-subtree siblings
+   to extend the depth-25 path to depth 29 for compatibility with the
+   Claim circuit. This is to account for the future nullifier tree growth, aiming to avoid chain upgrades for verifying key updates. See "Tree Depth vs. Circuit Depth" rationale for details.
 
 The client only computes a O(depth) number of hashes, namely to check validity
 of its retrieved authentication path.
@@ -321,8 +330,8 @@ to answer queries against a different snapshot.
 
 ### Tree Structure
 
-The exclusion tree is a sorted binary Merkle tree with depth 26, holding
-up to $N = 2^{26} \approx 67$ million leaves. The tree MUST use the
+The exclusion tree is a sorted binary Merkle tree with depth 25 (the PIR
+tree depth), holding up to $N = 2^{25} \approx 33.5$ million leaves. The tree MUST use the
 same Poseidon-based non-membership tree specified in
 [^draft-valargroup-orchard-balance-proof]. In particular,
 implementations MUST use the same field, Poseidon instantiation, and
@@ -332,8 +341,14 @@ hash definitions as that ZIP:
   $\mathsf{Poseidon}(\mathsf{left}, \mathsf{right})$ over
   $\mathbb{F}_{q_\mathbb{P}}$.
 - Leaf hash:
-  $\mathsf{Poseidon}(\mathsf{low}, \mathsf{width})$ over
+  $\mathsf{Poseidon3}(\mathsf{nf\_lo}, \mathsf{nf\_mid}, \mathsf{nf\_hi})$ over
   $\mathbb{F}_{q_\mathbb{P}}$.
+
+Each leaf commits to a *punctured range*: a triple of sorted nullifier
+boundaries $[\mathsf{nf\_lo}, \mathsf{nf\_mid}, \mathsf{nf\_hi}]$
+representing the interval $(\mathsf{nf\_lo}, \mathsf{nf\_hi}) \setminus
+\{\mathsf{nf\_mid}\}$. This packs two adjacent gaps per leaf (K=2),
+halving the leaf count compared to a single-gap-per-leaf design.
 
 Poseidon is used because it is efficient inside zero-knowledge proof
 circuits.
@@ -346,55 +361,63 @@ algorithm defined in [^draft-valargroup-orchard-balance-proof],
 summarized here for the aspects relevant to the PIR data layout.
 
 **Step 1: Sentinel initialization.** Before processing real nullifiers,
-the builder MUST insert 17 sentinel values into the sorted set:
+the builder MUST insert sentinel values into the sorted set:
 
-$$s_k = k \cdot 2^{250}, \quad k \in \{0, 1, \ldots, 16\}$$
+- $s_k = k \cdot 2^{249}$ for $k \in \{0, 1, \ldots, 32\}$ — 33
+  sentinels evenly spaced across the field.
+- $s_{33} = q_\mathbb{P} - 1$ — closes the tail of the field so every
+  non-nullifier value is covered.
 
 These sentinels partition $\mathbb{F}_{q_\mathbb{P}}$ (the Pallas base
-field, $q_\mathbb{P} \approx 2^{254}$) into intervals each of width
-strictly less than $2^{250}$, as required for the soundness of the
-in-circuit range checks defined in
-[^draft-valargroup-orchard-balance-proof].
+field, $q_\mathbb{P} \approx 2^{254}$) into segments where every
+punctured-range span $\mathsf{nf\_hi} - \mathsf{nf\_lo}$ is at most
+$2^{250}$, as required for the soundness of the in-circuit range checks
+defined in [^draft-valargroup-orchard-balance-proof].
 
-**Step 2: Build the sorted set.** Let $S$ be the union of the 17
-sentinels and all revealed Orchard nullifiers at the snapshot height.
+**Step 2: Build the sorted set.** Let $S$ be the union of the sentinels
+and all revealed Orchard nullifiers at the snapshot height.
 Sort $S$ in ascending order by canonical integer representation in
-$\{0, \ldots, q_\mathbb{P} - 1\}$.
+$\{0, \ldots, q_\mathbb{P} - 1\}$, and deduplicate.
 
-**Step 3: Derive exclusion ranges.** For each pair of consecutive
-elements $(s_i, s_{i+1})$ in $S$ with $s_{i+1} - s_i > 1$, create a
-leaf:
+**Step 3: Ensure odd count.** The punctured-range construction (K=2)
+requires an odd number of sorted nullifiers. If $|S|$ is even, the
+builder MUST insert the value 2 immediately after sentinel 0. (A real
+nullifier at exactly 2 has probability $\approx 2^{-254}$, so this slot
+is effectively always free.)
 
-- $\mathsf{low} = s_i + 1$
-- $\mathsf{width} = s_{i+1} - s_i - 2$
+**Step 4: Build punctured ranges.** Group the sorted nullifiers into
+overlapping triples stepping by 2:
 
-Consecutive elements with $s_{i+1} - s_i = 1$ produce no leaf (there is
-no unrevealed value between them).
+$$[\mathsf{nf}_0, \mathsf{nf}_1, \mathsf{nf}_2], \;
+  [\mathsf{nf}_2, \mathsf{nf}_3, \mathsf{nf}_4], \;
+  [\mathsf{nf}_4, \mathsf{nf}_5, \mathsf{nf}_6], \; \ldots$$
 
-If $s_{m-1} < q_\mathbb{P} - 1$ (where $s_{m-1}$ is the largest element
-in $S$), a terminal leaf MUST be added with
-$\mathsf{low} = s_{m-1} + 1$ and
-$\mathsf{width} = (q_\mathbb{P} - 1) - \mathsf{low}$.
+This produces $(|S| - 1) / 2$ punctured ranges. Each triple
+$[\mathsf{nf\_lo}, \mathsf{nf\_mid}, \mathsf{nf\_hi}]$ covers the
+punctured interval $(\mathsf{nf\_lo}, \mathsf{nf\_hi}) \setminus
+\{\mathsf{nf\_mid}\}$. Consecutive triples share boundary nullifiers,
+so every gap between adjacent nullifiers is covered by exactly one leaf.
 
-**Leaf count.** Starting from 17 sentinels (which produce at most 17
-initial interval leaves), each additional nullifier splits one interval
-into at most two, adding at most one leaf. After inserting $k$ distinct
-nullifiers the tree contains at most $17 + k$ real leaves. As of early
-2026 the Orchard pool contains approximately 51 million nullifiers,
-yielding approximately 51 million leaves — within the $2^{26} \approx
-67$ million capacity of the depth-26 tree.
+**Leaf count.** With K=2, approximately $n/2$ leaves are needed for $n$
+sorted nullifiers. As of early 2026 the Orchard pool contains
+approximately 51 million nullifiers; with sentinels, this yields
+approximately 25.5 million leaves — within the $2^{25} \approx 33.5$
+million capacity of the depth-25 tree.
 
-**Step 4: Pad to $2^{26}$ leaves.** The three-tier layout requires a
-complete binary tree with exactly $2^{26}$ leaf positions. The builder
+Implementations MUST verify that no punctured range has outer span
+exceeding $2^{250}$ before building the tree.
+
+**Step 5: Pad to $2^{25}$ leaves.** The three-tier layout requires a
+complete binary tree with exactly $2^{25}$ leaf positions. The builder
 MUST pad the tree as follows.
 
-The canonical empty leaf has $\mathsf{key} = 0$ and
-$\mathsf{value} = 0$ (i.e., $\mathsf{low} = 0$, $\mathsf{width} = 0$),
-with leaf hash $\mathsf{Poseidon}(0, 0)$, consistent with the empty-leaf
+The canonical empty leaf has $\mathsf{nf\_lo} = 0$,
+$\mathsf{nf\_mid} = 0$, $\mathsf{nf\_hi} = 0$, with leaf hash
+$\mathsf{Poseidon3}(0, 0, 0)$, consistent with the empty-leaf
 definition in [^draft-valargroup-orchard-balance-proof].
 
-Real exclusion-range leaves MUST occupy the leftmost (lowest-index) leaf
-positions, sorted in ascending order by $\mathsf{low}$. The remaining
+Real punctured-range leaves MUST occupy the leftmost (lowest-index) leaf
+positions, sorted in ascending order by $\mathsf{nf\_lo}$. The remaining
 rightmost positions MUST be filled with canonical empty leaves.
 
 For Tier 0 and Tier 1 subtree metadata, define `min_key` as follows:
@@ -403,8 +426,9 @@ Let $\mathsf{max\_key} \in \mathbb{F}_{q_\mathbb{P}}$ denote the field
 element whose canonical integer representation is $q_\mathbb{P} - 1$;
 equivalently, $\mathsf{max\_key} = -1 \bmod q_\mathbb{P}$.
 
-- If the subtree contains at least one real exclusion-range leaf,
-  `min_key` is the `low` value of that subtree's leftmost real leaf.
+- If the subtree contains at least one real punctured-range leaf,
+  `min_key` is the $\mathsf{nf\_lo}$ value of that subtree's leftmost
+  real leaf.
 - If the subtree consists entirely of empty leaves, implementations MUST
   encode $\mathsf{min\_key} = \mathsf{max\_key}$.
 
@@ -414,43 +438,45 @@ $\mathsf{min\_key}[S] \leq t$. Because
 all empty-only subtrees form a suffix and are encoded with
 $\mathsf{min\_key} = \mathsf{max\_key}$, this search is performed with respect to
 the canonical integer ordering on $\mathbb{F}_{q_\mathbb{P}}$. After the
-Tier 2 descent, the client MUST still verify that the decoded
-`(low, width)` interval contains the target key, and reject otherwise.
+Tier 2 descent, the client MUST still verify that the target nullifier
+falls strictly inside the punctured range, and reject otherwise.
 
 ### Leaf Encoding
 
-Each leaf represents an exclusion range. Implementations MUST encode
-exclusion ranges as $(low, width)$ pairs, where $low$ is the lower bound
-of the range and $width = high - low$. Both $low$ and $width$ are
-elements of $\mathbb{F}_ {q_ \mathbb{P}}$ (the Pallas base field [^protocol-pallasandvesta]), as are
-nullifiers.
+Each leaf represents a punctured exclusion range. Implementations MUST
+encode leaves as $(\mathsf{nf\_lo}, \mathsf{nf\_mid}, \mathsf{nf\_hi})$
+triples, where all three are elements of $\mathbb{F}_{q_\mathbb{P}}$
+(the Pallas base field [^protocol-pallasandvesta]). The leaf commitment
+is $\mathsf{Poseidon3}(\mathsf{nf\_lo}, \mathsf{nf\_mid},
+\mathsf{nf\_hi})$.
 
-To verify that a target nullifier $t$ falls within the exclusion range,
-the circuit MUST check:
+To verify that a target nullifier $t$ falls within the punctured
+exclusion range, the circuit MUST check:
 
-$$\mathsf{int}(t - low \bmod q_\mathbb{P}) < \mathsf{int}(width)$$
+1. **Strict interval:** $\mathsf{nf\_lo} < t < \mathsf{nf\_hi}$, verified
+   via two 250-bit range checks on $\mathsf{int}(t - \mathsf{nf\_lo} - 1)$
+   and $\mathsf{int}(\mathsf{nf\_hi} - t - 1)$.
+2. **Non-equality:** $t \neq \mathsf{nf\_mid}$, verified by witnessing
+   $\mathsf{inverse}(t - \mathsf{nf\_mid})$.
 
-where $\mathsf{int}(\cdot)$ denotes the canonical integer representation
-in $\{0, \ldots, q_\mathbb{P} - 1\}$. The subtraction is performed in
-$\mathbb{F}_ {q_ \mathbb{P}}$; the comparison is an unsigned integer
-comparison on the canonical representatives.
-
-The tree builder MUST ensure that $\mathsf{int}(low) + \mathsf{int}(width) < q_\mathbb{P}$
+The tree builder MUST ensure that
+$\mathsf{int}(\mathsf{nf\_hi}) - \mathsf{int}(\mathsf{nf\_lo}) \leq 2^{250}$
 for every leaf, so that the exclusion range does not wrap around the
-field modulus. Under this invariant, $t - low$ does not wrap for any
-$t$ in the range, and the single unsigned comparison is sufficient.
+field modulus. This invariant is guaranteed by the sentinel spacing
+(see [Tree Construction]).
 
 ### Authentication Path
 
-The PIR tiers provide 26 sibling hashes, one per tree depth from the
-leaf (depth 26) to the root of the depth-26 PIR tree (depth 0). To form
-the authentication path consumed by the Claim circuit, the client MUST
-append 3 additional sibling hashes corresponding to the canonical empty
-subtrees above that depth-26 root, yielding a complete depth-29
-authentication path. See [Tree Depth vs. Circuit Depth]. After decrypting the PIR responses for Tiers 1 and
-2 and appending those 3 deterministic siblings, the client MUST
-reconstruct the depth-29 Merkle root and verify it against the published
-depth-29 root of the exclusion tree.
+The PIR tiers provide 25 sibling hashes (9 from Tier 0, 6 from Tier 1,
+10 from Tier 2), one per tree depth from the leaf (depth 25) to the root
+of the depth-25 PIR tree (depth 0). To form the authentication path
+consumed by the Claim circuit, the client MUST append 4 additional
+sibling hashes corresponding to the canonical empty subtrees above that
+depth-25 root, yielding a complete depth-29 authentication path. See
+[Tree Depth vs. Circuit Depth]. After decrypting the PIR responses for
+Tiers 1 and 2 and appending those 4 deterministic siblings, the client
+MUST reconstruct the depth-29 Merkle root and verify it against the
+published depth-29 root of the exclusion tree.
 
 ## Retrieval Schemes
 
@@ -494,62 +520,65 @@ client's query target.
 
 A server supporting full download MUST make the following data available:
 
-1. **Tier 0 data** (196,576 bytes): identical to the Tier 0 plaintext
-   payload specified in [Tier 0: Plaintext Broadcast (Depths 0–11)].
+1. **Tier 0 data** (49,120 bytes): identical to the Tier 0 plaintext
+   payload specified in [Tier 0: Plaintext Broadcast (Depths 0–9)].
 
-2. **All Tier 1 rows** ($2{,}048$ rows, each 12,224 bytes = 25,034,752
+2. **All Tier 1 rows** ($512$ rows, each 4,096 bytes = 2,097,152
    bytes total): the complete set of Tier 1 row data as specified in
-   [Tier 1: Small PIR (Depths 11–18)], concatenated in row-index order.
+   [Tier 1: Small PIR (Depths 9–15)], concatenated in row-index order.
 
-3. **All leaf records** ($n$ records, each 64 bytes): every real
-   (non-empty) exclusion-range leaf in the depth-26 tree, serialized in
-   ascending order by $\mathsf{low}$. Each record is a 64-byte pair
-   $[\mathsf{low} \| \mathsf{width}]$ using the same encoding specified
-   in [Leaf Encoding]. The server MUST also provide the count of real
-   leaf records $n$ so that clients can distinguish real leaves from the
-   canonical empty padding.
+3. **All leaf records** ($n$ records, each 96 bytes): every real
+   (non-empty) punctured-range leaf in the depth-25 tree, serialized in
+   ascending order by $\mathsf{nf\_lo}$. Each record is a 96-byte triple
+   $[\mathsf{nf\_lo} \| \mathsf{nf\_mid} \| \mathsf{nf\_hi}]$ using the
+   same encoding specified in [Leaf Encoding]. The server MUST also
+   provide the count of real leaf records $n$ so that clients can
+   distinguish real leaves from the canonical empty padding.
 
-For the Orchard nullifier set of size 49,813,801 (as of Mainnet block
-height 3,268,870), the total download is approximately 3.2 GB
-(dominated by the leaf records). With standard HTTP compression
-(e.g., gzip or zstd), this is expected to be approximately 2 GB.
+For a full depth-25 tree ($2^{25}$ leaves), the total download is
+approximately 3.2 GB (dominated by the leaf records). With standard
+HTTP compression (e.g., gzip or zstd), this is expected to be
+significantly smaller.
 
 ### Client Procedure (Full Download)
 
 For each note whose nullifier exclusion proof is needed:
 
-1. **Tier 0 lookup**: Binary search the 2,048 `min_key` values in
+1. **Tier 0 lookup**: Binary search the 512 `min_key` values in
    Tier 0 to find the subtree index $S_1$, exactly as specified in
-   [Tier 0: Plaintext Broadcast (Depths 0–11)]. Read 11 sibling hashes
+   [Tier 0: Plaintext Broadcast (Depths 0–9)]. Read 9 sibling hashes
    from Tier 0.
 
 2. **Tier 1 lookup**: Read the Tier 1 row at index $S_1$ from the
-   downloaded Tier 1 data. Binary search its 128 `min_key` values to
+   downloaded Tier 1 data. Binary search its 64 `min_key` values to
    find the sub-subtree index $S_2$, exactly as specified in
-   [Tier 1: Small PIR (Depths 11–18)]. Read 7 sibling hashes from
-   the row.
+   [Tier 1: Small PIR (Depths 9–15)]. Rebuild the 6-level subtree
+   from the 64 leaf hashes (62 Poseidon hashes) and extract 6 sibling
+   hashes.
 
 3. **Tier 2 row computation**: Compute the Tier 2 row index as
-   $S_1 \times 128 + S_2$. Extract the 256 leaf records for this
+   $S_1 \times 64 + S_2$. Extract the 1,024 leaf records for this
    row from the downloaded leaf data (leaf indices
-   $[\text{row} \times 256, \; \text{row} \times 256 + 255]$).
+   $[\text{row} \times 1{,}024, \; \text{row} \times 1{,}024 + 1{,}023]$).
    For indices beyond the real leaf count, use the canonical empty leaf
-   $(\mathsf{low} = 0, \mathsf{width} = 0)$.
+   $(\mathsf{nf\_lo} = 0, \mathsf{nf\_mid} = 0, \mathsf{nf\_hi} = 0)$.
 
 4. **Compute Tier 2 internal nodes**: Compute the leaf hash for each of
-   the 256 leaves as $\mathsf{Poseidon}(\mathsf{low}, \mathsf{width})$
-   (256 hashes). Then compute the 254 internal node hashes bottom-up in
-   breadth-first order (254 hashes). Total: 510 Poseidon hashes.
+   the 1,024 leaves as
+   $\mathsf{Poseidon3}(\mathsf{nf\_lo}, \mathsf{nf\_mid}, \mathsf{nf\_hi})$
+   (1,024 hashes). Then compute the 1,022 internal node hashes bottom-up in
+   breadth-first order (1,022 hashes). Total: 2,046 Poseidon hashes.
 
-5. **Extract Tier 2 siblings**: Binary search the 256 leaf
-   $\mathsf{low}$ values to find the target position. Read 8 sibling
+5. **Extract Tier 2 siblings**: Binary search the 1,024 leaf
+   $\mathsf{nf\_lo}$ values to find the target position. Read 10 sibling
    hashes from the computed internal nodes, following the same procedure
-   as [Tier 2: Large PIR (Depths 18–26)]. The client MUST verify that
-   the target nullifier falls within the decoded $(\mathsf{low},
-   \mathsf{width})$ interval; otherwise it MUST reject the leaf.
+   as [Tier 2: Large PIR (Depths 15–25)]. The client MUST verify that
+   the target nullifier falls strictly inside the punctured range
+   ($\mathsf{nf\_lo} < t < \mathsf{nf\_hi}$ and $t \neq \mathsf{nf\_mid}$);
+   otherwise it MUST reject the leaf.
 
-6. **Assemble authentication path**: Combine the 11 + 7 + 8 = 26
-   sibling hashes from Tiers 0, 1, and 2. Append 3 deterministic
+6. **Assemble authentication path**: Combine the 9 + 6 + 10 = 25
+   sibling hashes from Tiers 0, 1, and 2. Append 4 deterministic
    empty-subtree siblings as specified in [Authentication Path] to
    obtain the complete depth-29 path.
 
@@ -561,53 +590,54 @@ For each note whose nullifier exclusion proof is needed:
 
 | Step                  | Hashes per note |
 | --------------------- | --------------- |
-| Tier 2 leaf hashes    | 256             |
-| Tier 2 internal nodes | 254             |
-| **Total**             | **510**         |
+| Tier 1 internal nodes | 62              |
+| Tier 2 leaf hashes    | 1,024           |
+| Tier 2 internal nodes | 1,022           |
+| **Total**             | **2,108**       |
 
-For a wallet proving $k$ notes, the total is $510k$ Poseidon hashes.
+For a wallet proving $k$ notes, the total is $2{,}108k$ Poseidon hashes.
 
 
 ## PIR Retrieval
 
 ### Data Structure Layout
 
-The 26-level exclusion tree is partitioned into three tiers to balance
+The 25-level exclusion tree is partitioned into three tiers to balance
 plaintext broadcast cost, PIR database size, and the number of PIR
 queries. Each tier covers a contiguous range of tree depths.
 
 ```
 Depth 0  ──────────────  root
   │
-  │   TIER 0: Plaintext broadcast (11 levels)
-  │   Depths 0–11
+  │   TIER 0: Plaintext broadcast (9 levels)
+  │   Depths 0–9
   │
-Depth 11 ──────────────  2,048 subtree roots
+Depth 9  ──────────────  512 subtree roots
   │
-  │   TIER 1: Small PIR (7 levels)
-  │   Depths 11–18
+  │   TIER 1: Small PIR (6 levels)
+  │   Depths 9–15
   │
-Depth 18 ──────────────  262,144 subtree roots
+Depth 15 ──────────────  32,768 subtree roots
   │
-  │   TIER 2: Large PIR (8 levels)
-  │   Depths 18–26
+  │   TIER 2: Large PIR (10 levels)
+  │   Depths 15–25
   │
-Depth 26 ──────────────  leaves (up to 67,108,864)
+Depth 25 ──────────────  leaves (up to 33,554,432)
 ```
 
 | Tier      | Depths | Siblings provided | Retrieval method    |
 | --------- | ------ | ----------------- | ------------------- |
-| 0         | 0–11   | 11                | Plaintext broadcast |
-| 1         | 11–18  | 7                 | PIR query           |
-| 2         | 18–26  | 8                 | PIR query           |
-| **Total** |        | **26**            |                     |
+| 0         | 0–9    | 9                 | Plaintext broadcast |
+| 1         | 9–15   | 6                 | PIR query           |
+| 2         | 15–25  | 10                | PIR query           |
+| **Total** |        | **25**            |                     |
 
-#### Tier 0: Plaintext Broadcast (Depths 0–11)
+#### Tier 0: Plaintext Broadcast (Depths 0–9)
 
 The server MUST publish the following two data blocks as a plaintext
 payload, identical for all clients:
 
-**Block A — Subtree roots at depth 11:**
+**Block A — Subtree roots at depth 9:**
 
 Each record contains:
 
@@ -616,194 +646,190 @@ Each record contains:
 | `hash`    | 32 bytes | Merkle hash of the subtree rooted at this node   |
 | `min_key` | 32 bytes | Smallest key in this subtree (for binary search) |
 
-Count: $2^{11} = 2{,}048$ records $\times$ 64 bytes = **131,072 bytes
-(128 KB)**.
+Count: $2^{9} = 512$ records $\times$ 64 bytes = **32,768 bytes
+(32 KB)**.
 
-**Block B — Internal hashes at depths 0–10:**
+**Block B — Internal hashes at depths 0–8:**
 
-All internal nodes from the root down to depth 10, serialized in
+All internal nodes from the root down to depth 8, serialized in
 breadth-first order.
 
-Count: $2^0 + 2^1 + \cdots + 2^{10} = 2^{11} - 1 = 2{,}047$ hashes
-$\times$ 32 bytes = **65,504 bytes (64 KB)**.
+Count: $2^0 + 2^1 + \cdots + 2^{8} = 2^{9} - 1 = 511$ hashes
+$\times$ 32 bytes = **16,352 bytes (~16 KB)**.
 
-**Total Tier 0 payload: 192 KB.**
+**Total Tier 0 payload: ~49 KB.**
 
 The Tier 0 payload is independent of the queried key and SHOULD be cached
 by clients. It changes only when the exclusion tree is updated.
 
 **Client procedure:**
 
-1. Binary search the 2,048 `min_key` values in Block A to find the
-   largest subtree index $S_1 \in \lbrack 0, 2047\rbrack$ such that
+1. Binary search the 512 `min_key` values in Block A to find the
+   largest subtree index $S_1 \in \lbrack 0, 511\rbrack$ such that
    $\mathsf{min\_key}\lbrack S_1\rbrack \leq \mathsf{target\_key}$,
    where any empty-only suffix subtree is encoded with
    $\mathsf{min\_key} = \mathsf{max\_key}$ as described in [Tree Construction].
-2. Read 11 sibling hashes directly from the two blocks:
-   - Depth-11 sibling: read `hash` from Block A at index $S_1 \oplus 1$.
-   - Depths 1–10 siblings: read from Block B by walking the path
+2. Read 9 sibling hashes directly from the two blocks:
+   - Depth-9 sibling: read `hash` from Block A at index $S_1 \oplus 1$.
+   - Depths 1–8 siblings: read from Block B by walking the path
      determined by $S_1$ upward through the BFS-indexed tree.
 
-#### Tier 1: Small PIR (Depths 11–18)
+#### Tier 1: Small PIR (Depths 9–15)
 
-The Tier 1 PIR database MUST contain one row per depth-11 subtree. Each
-row contains a complete 7-level subtree (depths 11–18). The subtree root
-(the depth-11 node) is not included, as the client already has it from
+The Tier 1 PIR database MUST contain one row per depth-9 subtree. Each
+row contains a complete 6-level subtree (depths 9–15). The subtree root
+(the depth-9 node) is not included, as the client already has it from
 Tier 0.
 
-| Property        | Value                          | Derivation               |
-| --------------- | ------------------------------ | ------------------------ |
-| Rows            | $2^{11} = 2{,}048$             | One per depth-11 subtree |
-| Content per row | 7-level subtree (depths 11–18) | See below                |
+| Property        | Value                            | Derivation               |
+| --------------- | -------------------------------- | ------------------------ |
+| Rows            | $2^{9} = 512$                    | One per depth-9 subtree  |
+| Content per row | 64 leaf records only             | No internal nodes        |
 
-**Internal nodes** (relative depths 1–6, absolute depths 12–17):
+Each row contains only the 64 leaf records for the subtree. Internal
+nodes are NOT stored; the client rebuilds the 6-level subtree locally
+from the leaf hashes (~62 Poseidon hashes).
 
-126 nodes ($2^7 - 2$) $\times$ 32 bytes = **4,032 bytes**.
-
-**Leaf records** (relative depth 7, absolute depth 18):
+**Leaf records** (relative depth 6, absolute depth 15):
 
 These are Tier 2 subtree roots, each containing a 32-byte hash and a
 32-byte `min_key` for binary search.
 
-128 records $\times$ 64 bytes = **8,192 bytes**.
+64 records $\times$ 64 bytes = **4,096 bytes**.
 
-**Row total: 12,224 bytes (11.9 KB).**
+**Row total: 4,096 bytes (4 KB).**
 
 The PIR value size for this tier is given in [Parameters]. Rows are
 loaded into the PIR database exactly as serialized below.
 
-| Metric        | Value                                      |
-| ------------- | ------------------------------------------ |
-| Database size | 2,048 rows $\times$ 12,224 B = **23.9 MB** |
+| Metric        | Value                                     |
+| ------------- | ----------------------------------------- |
+| Database size | 512 rows $\times$ 4,096 B = **2 MB**      |
 
-**Row serialization (12,224 bytes):**
+**Row serialization (4,096 bytes):**
 
-Internal nodes MUST be serialized in breadth-first order (depth 1
-left-to-right, then depth 2, and so on through depth 6):
+Leaf records only — no internal nodes. The client rebuilds the subtree locally.
 
 ```
-Bytes 0–4,031:      internal_nodes[0..125]        126 × 32 B = 4,032 B
-Bytes 4,032–12,223: leaf_records[0..127]          128 × 64 B = 8,192 B
+Bytes 0–4,095:      leaf_records[0..63]           64 × 64 B = 4,096 B
                     where each record is:
                     bytes 0–31:   hash
                     bytes 32–63:  min_key
-                                                     Total:      12,224 B
+                                                     Total:      4,096 B
 ```
 
-**BFS indexing:** A node at relative depth $d$, horizontal position $p$
-(0-indexed) has internal node index $(2^d - 2) + p$ for
-$d \in \lbrack 1, 6\rbrack$, $p \in \lbrack 0, 2^d)$. The sibling of position $p$ at any
-depth is at position $p \oplus 1$. The parent of position $p$ is at
-position $p \gg 1$ at depth $d - 1$.
-
-Leaf record $i \in \lbrack 0, 127\rbrack$ begins at byte offset
-$4032 + 64i$. Within that record, the `hash` field occupies bytes
-$4032 + 64i \ldots 4063 + 64i$ and the `min_key` field occupies bytes
-$4064 + 64i \ldots 4095 + 64i$.
+Leaf record $i \in \lbrack 0, 63\rbrack$ begins at byte offset
+$64i$. Within that record, the `hash` field occupies bytes
+$64i \ldots 64i + 31$ and the `min_key` field occupies bytes
+$64i + 32 \ldots 64i + 63$.
 
 **Client procedure:**
 
 1. Issue a PIR query for row $S_1$ (the subtree index from Tier 0).
-2. Binary search the 128 `min_key` fields in the interleaved leaf
+2. Binary search the 64 `min_key` fields in the interleaved leaf
    records to
-   find the largest sub-subtree index $S_2 \in \lbrack 0, 127\rbrack$
+   find the largest sub-subtree index $S_2 \in \lbrack 0, 63\rbrack$
    such that
    $\mathsf{leaf\_records}[S_2].\mathsf{min\_key} \leq \mathsf{target\_key}$.
    Any empty-only suffix subtree in this array is encoded with
    $\mathsf{min\_key} = \mathsf{max\_key}$.
-3. Read 7 sibling hashes directly from the row:
-   - Depth-18 sibling: the leaf record at index $S_2 \oplus 1$ (its
-     `hash` field).
-   - Depths 12–17 siblings: walk the internal nodes from position $S_2$
-     upward, reading the sibling hash at each level.
+3. Rebuild the 6-level subtree and extract 6 sibling hashes:
+   - Read the 64 leaf `hash` values (already pre-computed; no hashing needed).
+   - Build 5 internal levels bottom-up: 32 + 16 + 8 + 4 + 2 = 62
+     Poseidon hashes.
+   - Walk the path determined by $S_2$, collecting the sibling at each level.
 
-#### Tier 2: Large PIR (Depths 18–26)
+#### Tier 2: Large PIR (Depths 15–25)
 
-The Tier 2 PIR database MUST contain one row per depth-18 subtree. Each
-row contains a complete 8-level subtree (depths 18–26). The subtree root
-(the depth-18 node) is not included, as the client already has it from
-Tier 1.
+The Tier 2 PIR database MUST contain one row per depth-15 subtree. Each
+row contains only the 1,024 leaf records for the subtree (depths 15–25).
+Internal nodes are NOT stored; the client rebuilds the 10-level subtree
+locally from the leaf data. The subtree root (the depth-15 node) is not
+included, as the client already has it from Tier 1.
 
-| Property        | Value                          | Derivation               |
-| --------------- | ------------------------------ | ------------------------ |
-| Rows            | $2^{18} = 262{,}144$           | One per depth-18 subtree |
-| Content per row | 8-level subtree (depths 18–26) | See below                |
+| Property        | Value                             | Derivation                |
+| --------------- | --------------------------------- | ------------------------- |
+| Rows            | $2^{15} = 32{,}768$               | One per depth-15 subtree  |
+| Content per row | 1,024 leaf records only            | No internal nodes         |
 
-**Internal nodes** (relative depths 1–7, absolute depths 19–25):
-
-254 nodes ($2^8 - 2$) $\times$ 32 bytes = **8,128 bytes**.
-
-**Leaf records** (relative depth 8, absolute depth 26 — the actual tree
+**Leaf records** (relative depth 10, absolute depth 25 — the actual tree
 leaves):
 
-Each leaf contains a 32-byte `low` value and a 32-byte `width` value as
-specified in [Leaf Encoding]. No separate hash field is stored; the leaf
-hash is computed as $\mathsf{Hash}(\mathsf{low} \| \mathsf{width})$.
+Each leaf contains a 32-byte $\mathsf{nf\_lo}$, a 32-byte
+$\mathsf{nf\_mid}$, and a 32-byte $\mathsf{nf\_hi}$ as specified in
+[Leaf Encoding]. No separate hash field is stored; the leaf hash is
+computed as
+$\mathsf{Poseidon3}(\mathsf{nf\_lo}, \mathsf{nf\_mid}, \mathsf{nf\_hi})$.
 
-256 leaves $\times$ 64 bytes = **16,384 bytes**.
+1,024 leaves $\times$ 96 bytes = **98,304 bytes**.
 
-**Row total: 24,512 bytes (23.9 KB).**
+**Row total: 98,304 bytes (96 KB).**
 
 The PIR value size for this tier is given in [Parameters]. Rows are
 loaded into the PIR database exactly as serialized below.
 
-| Metric        | Value                                        |
-| ------------- | -------------------------------------------- |
-| Database size | 262,144 rows $\times$ 24,512 B = **5.98 GB** |
+| Metric        | Value                                            |
+| ------------- | ------------------------------------------------ |
+| Database size | 32,768 rows $\times$ 98,304 B = **~3 GB**        |
 
-**Row serialization (24,512 bytes):**
+**Row serialization (98,304 bytes):**
 
 ```
-Bytes 0–8,127:       internal_nodes[0..253]        254 × 32 B = 8,128 B
-Bytes 8,128–24,511:  leaf_records[0..255]          256 × 64 B = 16,384 B
+Bytes 0–98,303:      leaf_records[0..1023]         1,024 × 96 B = 98,304 B
                      where each record is:
-                     bytes 0–31:   low
-                     bytes 32–63:  width
-                                                       Total:      24,512 B
+                     bytes 0–31:   nf_lo
+                     bytes 32–63:  nf_mid
+                     bytes 64–95:  nf_hi
+                                                       Total:      98,304 B
 ```
 
-Leaf record $i \in \lbrack 0, 255\rbrack$ begins at byte offset
-$8128 + 64i$. Within that record, the `low` field occupies bytes
-$8128 + 64i \ldots 8159 + 64i$ and the `width` field occupies bytes
-$8160 + 64i \ldots 8191 + 64i$.
+Leaf record $i \in \lbrack 0, 1{,}023\rbrack$ begins at byte offset $96i$.
+Within that record, $\mathsf{nf\_lo}$ occupies bytes $96i \ldots 96i + 31$,
+$\mathsf{nf\_mid}$ occupies bytes $96i + 32 \ldots 96i + 63$, and
+$\mathsf{nf\_hi}$ occupies bytes $96i + 64 \ldots 96i + 95$.
+
+Empty leaf records use all-zero fields
+($\mathsf{nf\_lo} = \mathsf{nf\_mid} = \mathsf{nf\_hi} = 0$).
 
 **Client procedure:**
 
-1. Compute the Tier 2 row index as $S_1 \times 128 + S_2$.
+1. Compute the Tier 2 row index as $S_1 \times 64 + S_2$.
 2. Issue a PIR query for this row.
-3. Binary search only the populated prefix of the 256 interleaved leaf
+3. Binary search only the populated prefix of the 1,024 leaf
    records to find the largest index $\mathsf{target\_position}$ such
    that
-   $\mathsf{leaf\_records}[\mathsf{target\_position}].\mathsf{low} \leq
+   $\mathsf{leaf\_records}[\mathsf{target\_position}].\mathsf{nf\_lo} \leq
    \mathsf{target\_key}$.
    Any trailing records corresponding to empty right-padding are not part
    of this search.
-   Let $(low, width)$ be the leaf record at that position. The client
-   MUST verify that $\mathsf{target\_key}$ is contained in the exclusion
-   interval encoded by $(low, width)$ as specified in [Leaf Encoding];
-   otherwise it MUST reject the row as invalid.
-4. Read 8 sibling hashes from the row:
-   - Depth-26 sibling: the leaf at index
-     $(\mathsf{target\_position} \oplus 1)$. Let
-     $(low_\mathsf{sib}, width_\mathsf{sib})$ be the leaf record at that
-     position. Compute its hash as
-     $\mathsf{Hash}(\mathsf{low}_\mathsf{sib} \| \mathsf{width}_\mathsf{sib})$.
-     This is the only hash the client computes during the PIR retrieval
-     phase.
-   - Depths 19–25 siblings: read from the 254 internal nodes by walking
-     upward from the target leaf position.
+   Let $(\mathsf{nf\_lo}, \mathsf{nf\_mid}, \mathsf{nf\_hi})$ be the
+   leaf record at that position. The client MUST verify that
+   $\mathsf{target\_key}$ falls strictly inside the punctured range
+   ($\mathsf{nf\_lo} < \mathsf{target\_key} < \mathsf{nf\_hi}$ and
+   $\mathsf{target\_key} \neq \mathsf{nf\_mid}$) as specified in
+   [Leaf Encoding]; otherwise it MUST reject the row as invalid.
+4. Rebuild the 10-level subtree and extract 10 sibling hashes:
+   - Hash all 1,024 leaf records:
+     $\mathsf{Poseidon3}(\mathsf{nf\_lo}, \mathsf{nf\_mid}, \mathsf{nf\_hi})$
+     for populated leaves,
+     $\mathsf{Poseidon3}(0, 0, 0)$ for empty padding (1,024 hashes).
+   - Build 9 internal levels bottom-up: $512 + 256 + 128 + 64 + 32 + 16 + 8 + 4 + 2 = 1{,}022$
+     Poseidon hashes.
+   - Walk the path determined by $\mathsf{target\_position}$, collecting
+     the sibling at each level.
+   - Total: approximately **2,046 Poseidon hashes**.
 
 ### Bandwidth Summary
 
-| Component                   | Upload     | Download    | Round trip  |
-| --------------------------- | ---------- | ----------- | ----------- |
-| Tier 0 payload              | —          | 192 KB      | 192 KB      |
-| PIR Query 1 (Tier 1, 24 MB) | 544 KB     | ~48 KB      | ~592 KB     |
-| PIR Query 2 (Tier 2, 6 GB)  | 2.6 MB     | ~84 KB      | ~2.7 MB     |
-| **Total (first query)**     | **3.2 MB** | **~324 KB** | **~3.5 MB** |
-| **Total (Tier 0 cached)**   | **3.2 MB** | **~132 KB** | **~3.3 MB** |
+| Component                     | Upload     | Download   | Round trip   |
+| ----------------------------- | ---------- | ---------- | ------------ |
+| Tier 0 payload                | —          | 49 KB      | 49 KB        |
+| PIR Query 1 (Tier 1, 2 MB)    | 544 KB     | ~48 KB     | ~592 KB      |
+| PIR Query 2 (Tier 2, 3 GB)    | 592 KB     | ~48 KB     | ~640 KB      |
+| **Total (first query)**       | **1.1 MB** | **~145 KB**| **~1.3 MB**  |
+| **Total (Tier 0 cached)**     | **1.1 MB** | **~96 KB** | **~1.2 MB**  |
 
-Upload is dominated by the Tier 2 query-dependent selector component
+Upload is dominated by the packing-key component and the query-dependent selector component
 ($\mathsf{packed\_query\_row}$, proportional to the number of database
 rows) and the transmitted condensed packing-key component.
 
@@ -814,16 +840,20 @@ efficiently.
 
 ### Client Computation Summary
 
-| Step      | Binary search   | Hashes computed       | Sibling hashes read |
-| --------- | --------------- | --------------------- | ------------------- |
-| Tier 0    | Over 2,048 keys | 0                     | 11                  |
-| Tier 1    | Over 128 keys   | 0                     | 7                   |
-| Tier 2    | Over 256 keys   | 1 (sibling leaf hash) | 8                   |
-| **Total** |                 | **1**                 | **26**              |
+| Step      | Binary search  | Hashes computed            | Sibling hashes extracted |
+| --------- | -------------- | -------------------------- | ------------------------ |
+| Tier 0    | Over 512 keys  | 0                          | 9 (from plaintext)       |
+| Tier 1    | Over 64 keys   | ~62 (subtree rebuild)      | 6 (during rebuild)       |
+| Tier 2    | Over 1,024 keys| ~2,046 (subtree rebuild)   | 10 (during rebuild)      |
+| **Total** |                | **~2,108**                 | **25**                   |
 
-All internal node hashes are served directly by Tier 0, Tier 1, and Tier
-2. The client computes exactly 1 hash during proof retrieval: the
-sibling leaf hash in Tier 2.
+Tier 0 serves pre-computed internal nodes, so the client reads siblings
+directly. Tier 1 and Tier 2 rows store only leaf data (no internal
+nodes); the client rebuilds the subtree locally for each.
+Tier 1: 62 $\mathsf{Poseidon}$ hashes from pre-computed leaf hashes
+(6-level subtree).
+Tier 2: 1,024 $\mathsf{Poseidon3}$ leaf hashes + 1,022 $\mathsf{Poseidon}$
+internal hashes (10-level subtree). Total: **~2,108 Poseidon calls** (~25 ms on mobile).
 
 ### Query Completion Requirement
 
@@ -944,8 +974,8 @@ PIR database values are the raw serialized tier rows:
 
 | Tier   | Serialized row length and PIR value size |
 | ------ | ---------------------------------------- |
-| Tier 1 | 12,224 bytes                             |
-| Tier 2 | 24,512 bytes                             |
+| Tier 1 | 4,096 bytes                              |
+| Tier 2 | 98,304 bytes                             |
 
 No explicit file-level or wire-level zero-padding bytes are appended to
 these rows before they are loaded into the PIR database.
@@ -1060,14 +1090,14 @@ For the nullifier-exclusion-tree instantiation in [Instantiations]:
 
 | Derived quantity | Tier 1 | Tier 2 |
 |---|---|---|
-| Logical rows $m$ | $2^{11} = 2{,}048$ | $2^{18} = 262{,}144$ |
-| Serialized row length $L_\mathsf{value}$ | 12,224 bytes | 24,512 bytes |
-| Plaintext-word columns $W_\mathsf{value}$ | 6,986 | 14,007 |
-| Packing chunks $I$ | 4 | 7 |
-| Padded columns $W_\mathsf{pad}$ | 8,192 | 14,336 |
-| Trailing zero words $z$ | 1,206 | 329 |
-| Padded rows $m_\mathsf{pad}$ | 2,048 | 262,144 |
-| Row-dimension exponent $\nu_1$ | 0 | 7 |
+| Logical rows $m$ | $2^{9} = 512$ | $2^{15} = 32{,}768$ |
+| Serialized row length $L_\mathsf{value}$ | 4,096 bytes | 98,304 bytes |
+| Plaintext-word columns $W_\mathsf{value}$ | 2,341 | 56,174 |
+| Packing chunks $I$ | 2 | 28 |
+| Padded columns $W_\mathsf{pad}$ | 4,096 | 57,344 |
+| Trailing zero words $z$ | 1,755 | 1,170 |
+| Padded rows $m_\mathsf{pad}$ | 2,048 | 32,768 |
+| Row-dimension exponent $\nu_1$ | 0 | 4 |
 
 ### Regev Encryption
 
@@ -1657,9 +1687,9 @@ indices within $pk_\mathsf{condensed}$.
 
 Let `L_value` be the PIR value size fixed for the selected database tier
 in [Parameters], and let `L_row` be the row serialization length defined
-by this ZIP for that tier (12,224 bytes for Tier 1 and 24,512 bytes for
+by this ZIP for that tier (4,096 bytes for Tier 1 and 98,304 bytes for
 Tier 2). For this ZIP, `L_value = L_row` for both tiers: Tier 1 uses
-12,224 bytes and Tier 2 uses 24,512 bytes, as specified in [Parameters].
+4,096 bytes and Tier 2 uses 98,304 bytes, as specified in [Parameters].
 Let $W_\mathsf{value}$, $W_\mathsf{pad}$, and $I$ be the value-carrying
 column count, padded column count, and packing-chunk count from
 [Database Shape].
@@ -2627,7 +2657,7 @@ Providing two retrieval schemes addresses two distinct concerns:
    external review.
 
 2. **Bandwidth efficiency.** PIR retrieval reduces per-query bandwidth
-   from approximately 3.3 GB to approximately 3.5 MB, making it
+   from approximately 3.2 GB to approximately 1.2 MB, making it
    practical for mobile wallets. However, its privacy guarantee depends
    on the hardness of LWE and RLWE.
 
@@ -2638,30 +2668,26 @@ leaf records directly instead of issuing encrypted PIR queries. This
 design avoids maintaining two separate tree formats and allows servers
 to support both schemes from the same tree build.
 
-The full download omits Tier 2 internal node hashes to reduce download
-size. Tier 2 has 262,144 rows of 254 internal nodes each (254 × 32 =
-8,128 bytes per row), totaling approximately 2 GB. Including them would
-nearly double the download size. Instead, the client computes the 510
-Poseidon hashes needed per note on demand, which is negligible on modern
-hardware.
+Tier 2 rows store only leaf records (no internal nodes) in both
+retrieval schemes. The client computes approximately 2,046 Poseidon hashes
+per note to rebuild the 10-level subtree on demand, which is negligible
+on modern hardware (~25 ms on mobile).
 
 ## Parameter Selection
 
 The parameters in [Parameters] follow the referenced YPIR implementation [^ypir-impl].
 
 The binding constraint is the Tier 2 database (see
-[Tier 2: Large PIR (Depths 18–26)]). With a depth-26 exclusion tree
-holding up to $2^{26} \approx 67$ million leaves, Tier 2 contains
-$2^{18} = 262{,}144$ rows of 24,512 bytes each, totaling approximately
-6 GB. This is well within the 64 GB ceiling. This leaves roughly an order of
-magnitude of headroom before the parameters would need to be revised,
-accommodating substantial growth of the Orchard nullifier set without
-any change to the cryptographic configuration.
+[Tier 2: Large PIR (Depths 15–25)]). With a depth-25 exclusion tree
+holding up to $2^{25} \approx 33.5$ million leaves, Tier 2 contains
+$2^{15} = 32{,}768$ rows of 98,304 bytes each, totaling approximately
+3 GB. This is well within the 64 GB ceiling, leaving substantial
+headroom before the parameters would need to be revised.
 
 Even under the depth-29 tree supported by the Claim circuit
 (see [Tree Depth vs. Circuit Depth]), an analogous three-tier layout
-would produce at most $2^{21} \approx 2$ million Tier 2 rows. At the
-current row size this yields approximately 48 GB, still within the
+would produce at most $2^{19} \approx 524{,}288$ Tier 2 rows. At the
+current row size this yields approximately 49 GB, still within the
 64 GB bound.
 
 The YPIR paper [^YPIR] targets 128-bit computational security with
@@ -2825,10 +2851,10 @@ On a database of $N$ bytes, the hint size is roughly $4\sqrt{N}$ KB
 | 10 MB         | $\approx$ 12.6 MB |
 | 1 GB          | 128 MB            |
 
-For the Tier 2 database in this document (6 GB, see
-[Tier 2: Large PIR (Depths 18–26)]), the hint would exceed 300 MB. That
-is far beyond what a cold-start mobile client can download before its
-first query.
+For the Tier 2 database in this document (~3 GB, see
+[Tier 2: Large PIR (Depths 15–25)]), the hint would be approximately
+224 MB. That is still beyond what a cold-start mobile client can
+download before its first query.
 
 ### Why YPIR+SP Fits This ZIP
 
@@ -2892,13 +2918,13 @@ risk for a system that must be trustworthy from launch.
 
 ### Rationale for YPIR+SP over standard YPIR
 
-For the Tier 2 PIR database (24,512-byte PIR values carrying 24,512-byte
+For the Tier 2 PIR database (98,304-byte PIR values carrying 98,304-byte
 serialized rows; see
-[Data Structure Layout]), standard YPIR would require 24,512 parallel
+[Data Structure Layout]), standard YPIR would require 98,304 parallel
 DoublePIR instances (one per byte), each with its own 16 MB hint — a
 prohibitive cost. YPIR+SP avoids this: the full row is packed into RLWE
-ciphertexts in a single pass, achieving ~2.6 MB total communication for
-the 6 GB Tier 2 database (see [Bandwidth Summary]). See
+ciphertexts in a single pass, achieving ~640 KB total communication for
+the ~3 GB Tier 2 database (see [Bandwidth Summary]). See
 [Construction Choice] for a comparison with other PIR schemes.
 
 We choose YPIR+SP because it achieves a hintless design with appropriate
@@ -2989,47 +3015,35 @@ resulting LWE-form outputs.
 
 ## Data Structure Split
 
-The 11 + 7 + 8 tier split balances three competing concerns:
+The 9 + 6 + 10 tier split balances three competing concerns:
 
-1. **Tier 0 broadcast size.** The plaintext tier covers 11 levels,
-   producing $2^{11} = 2{,}048$ subtree roots (128 KB) plus 2,047
-   internal hashes (64 KB), totaling 192 KB — small enough for CDN
-   distribution or even bundling in application code. Increasing Tier 0
-   to 12 levels would roughly double the broadcast with diminishing
-   returns.
+1. **Tier 0 broadcast size.** The plaintext tier covers 9 levels,
+   producing $2^{9} = 512$ subtree roots (32 KB) plus 511
+   internal hashes (~16 KB), totaling ~49 KB — small enough for CDN
+   distribution and client-side caching.
 
-2. **Tier 1 PIR database size.** Each of the 2,048 rows contains a
-   7-level subtree (12,224 bytes), yielding a 24 MB database. This is
+2. **Tier 1 PIR database size.** Each of the 512 rows contains a
+   6-level subtree (4,096 bytes of leaf records), yielding a 2 MB logical
+   database (padded to 2,048 rows for the YPIR minimum). This is
    small enough for efficient PIR processing.
 
-3. **Tier 2 PIR database size.** The remaining 8 levels produce 262,144
-   rows of 24,512 bytes each, yielding a 6 GB database. This is the
-   binding constraint for PIR scheme selection and determines server
-   hardware requirements.
+3. **Tier 2 PIR database size.** The remaining 10 levels produce 32,768
+   rows of 98,304 bytes each (leaf records only, no internal nodes),
+   yielding a ~3 GB database. This is the binding constraint for PIR
+   scheme selection and determines server hardware requirements.
 
-Compared to an 11 + 8 + 7 split, moving one Merkle layer from Tier 1
-into Tier 2 halves the number of Tier 2 rows (from 524,288 to 262,144)
-at the cost of doubling the row size (from 12,224 to 24,512 bytes).
-Because the YPIR query upload scales linearly with the number of
-database rows while the response scales with row size, this trade-off
-reduces the dominant upload cost by approximately 44% (from 4.5 MB to
-2.5 MB) with no net change in total download (the total YPIR instances
-that impact response size across both tiers remains constant at 11).
-
-Moving to 12 + 8 + 6 split showed an inverse effect of doubling
-the number of rows for both Tier 2 and Tier 1. Thus, increasing query sizes
-which is the dominant communication cost.
+With punctured-range leaves (K=2), the tree depth is 25. The 9 + 6 + 10
+split allocates more depth to Tier 0 (plaintext) and Tier 2 (large PIR),
+keeping Tier 1 small. Tier 1 has 64 leaves per row and Tier 2 has 1,024
+leaves per row. Internal nodes are not stored in either PIR tier; the
+client rebuilds subtrees locally.
 
 Two hard constraints from the YPIR library further limit the design space.
 YPIR requires `num_items` $\geq 2^{11}$, setting a floor of 2,048
 rows for any PIR tier. YPIR also requires `item_size_bits` $\geq
 2{,}048 \times 14 = 28{,}672$, setting a floor of 3,584 bytes per row.
-The 11 + 7 + 8 split satisfies both (Tier 1 has 2,048 rows; Tier 2 has
-24,512-byte PIR values). Alternative splits such as 10 + 8 + 8 (violates the
-Tier 1 row minimum) and 13 + 8 + 5 (violates the Tier 2 minimum item
-size) are infeasible without modifying YPIR.
-
-As a result, 11 + 7 + 8 tier split is the optimal.
+The 9 + 6 + 10 split satisfies both (Tier 1 has 512 logical rows, padded
+to 2,048; Tier 2 has 98,304-byte PIR values).
 
 Only 2 PIR queries are needed, and they are inherently sequential: the
 Tier 2 row index depends on the Tier 1 result. Pipelining is not
@@ -3039,56 +3053,61 @@ requires no PIR query at all.
 
 ## Per-Tier PIR Value Sizing
 
-A uniform value size (e.g., 32 KB) would inflate Tier 1 from 24 MB to
-64 MB and Tier 2 from 6 GB to 8 GB. Since YPIR+SP touches every byte
-per query, unused padding directly increases server computation time.
-This ZIP fixes per-tier PIR value sizes equal to the serialized row
-lengths: 12,224 bytes for Tier 1 and 24,512 bytes for Tier 2. Any
-additional zero-fill required to map those byte strings into the
-underlying YPIR plaintext representation is internal to the YPIR
-implementation and does not change the serialized tier-row format.
+A uniform value size would inflate both tiers with unused
+padding. Since YPIR+SP touches every byte per query, unused padding
+directly increases server computation time. This ZIP fixes per-tier PIR
+value sizes equal to the serialized row lengths: 4,096 bytes for Tier 1
+and 98,304 bytes for Tier 2. Any additional zero-fill required to map
+those byte strings into the underlying YPIR plaintext representation is
+internal to the YPIR implementation and does not change the serialized
+tier-row format.
 
 ## Tree Depth vs. Circuit Depth
 
-The PIR data structure uses a tree of depth 26, which is sufficient for
-the current Orchard nullifier set (~51 million nullifiers, well within
-the $2^{26} \approx 67$ million leaf capacity). The Claim circuit
+The PIR data structure uses a tree of depth 25, which is sufficient for
+the current nullifier set (up to
+$2^{25} \approx 33.5$ million leaf capacity). The Claim circuit
 defined in [^draft-valargroup-orchard-balance-proof], however, fixes
 the non-membership Merkle path depth at 29, supporting up to
 $2^{29} \approx 537$ million leaves.
 
 These depths intentionally differ. The PIR server's tiered data
-structure materializes only the depth-26 tree, because that is sufficient
+structure materializes only the depth-25 tree, because that is sufficient
 for the current nullifier set and keeps Tier 2 within the desired size
 bound. The server also publishes a depth-29 root obtained by extending
-the depth-26 root upward with 3 completely empty sibling subtrees. Those
-top 3 siblings are deterministic: each is the root hash of a completely
+the depth-25 root upward with 4 completely empty sibling subtrees. Those
+top 4 siblings are deterministic: each is the root hash of a completely
 empty subtree, computable from the canonical empty leaf hash. The client
-appends these 3 known sibling hashes to the 26 siblings retrieved via
+appends these 4 known sibling hashes to the 25 siblings retrieved via
 PIR, producing a full depth-29 authentication path for the circuit.
 
-This costs approximately 1,000 additional constraints in the Claim
-circuit (3 extra Poseidon hashes, each roughly 330 constraints at width
+This costs approximately 1,320 additional constraints in the Claim
+circuit (4 extra Poseidon hashes, each roughly 330 constraints at width
 $t = 3$). This overhead does not increase the minimum SRS degree for
 the polynomial commitment scheme, because the total circuit size remains
 within the same power-of-two bound.
 
 The benefit is that the circuit's proving and verification keys support
 trees up to depth 29 without regeneration. As the Orchard nullifier set
-grows beyond $2^{26}$, only the PIR tier structure and server databases
+grows beyond $2^{25}$, only the PIR tier structure and server databases
 need to be updated. The circuit parameters remain unchanged. Changing
 the circuit depth would require new verifying keys, which are embedded
 in the state machine of the vote chain. Therefore, require a network upgrade to deploy. This headroom avoids that.
 
-## Rationale for (low, width) encoding
+## Rationale for punctured-range encoding
 
-The original formulation in "Air drops, Proof-of-Balance, and Stake-weighted Polling" [^draft-str4d-orchard-balance-proof] uses $(start, end)$ pairs. Verifying
-$start \leq t \leq end$ requires two comparisons inside the ZKP circuit.
+With K=2 punctured ranges, each leaf stores three sorted nullifier
+boundaries $[\mathsf{nf\_lo}, \mathsf{nf\_mid}, \mathsf{nf\_hi}]$
+and covers two adjacent gaps. This halves the leaf count compared to a
+single-gap-per-leaf (K=1) design, reducing tree depth by one level. The net effect is a smaller tree
+(fewer internal nodes dominate over the 50% larger leaf records), a
+smaller PIR database, and one fewer Merkle level in the authentication
+path.
 
-The $(low, width)$ encoding reduces this to one subtraction ($t - low$)
-and one unsigned comparison ($< width$), saving one comparison gate in the
-circuit. Since the exclusion range check is performed for every balance
-proof, this saving applies to every protocol participant.
+The circuit cost is essentially unchanged: one extra Poseidon
+permutation in the leaf commitment ($\mathsf{Poseidon3}$ vs
+$\mathsf{Poseidon}$) is offset by one fewer tree level, and the
+$t \neq \mathsf{nf\_mid}$ check is a single inversion constraint.
 
 ## Rationale for Query Completion Requirement
 
