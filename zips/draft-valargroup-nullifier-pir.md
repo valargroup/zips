@@ -117,8 +117,8 @@ structure spanning 25 levels of depth:
 3. Large PIR tier (3 GB).
 
 The client retrieves the 25 sibling hashes for the depth-25 PIR tree in two
-sequential PIR queries plus the plaintext download, then appends 4
-deterministic empty-subtree siblings to obtain the depth-29 authentication
+sequential PIR queries plus the plaintext download, then appends 1
+deterministic empty-subtree sibling to obtain the depth-26 authentication
 path. Total bandwidth is approximately 1.3 MB on
 the first nullifier exclusion proof request, or approximately 1.2 MB once the Tier 0 plaintext is cached
 (dominated by the PIR query uploads).
@@ -292,8 +292,8 @@ sequential PIR queries:
 4. From Tier 0 and the recovered Tier 1 and Tier 2 rows, the client
    reconstructs the depth-25 authentication path (9 + 6 + 10 = 25
    sibling hashes) used for nullifier non-membership.
-5. The client appends 4 deterministic empty-subtree siblings
-   to extend the depth-25 path to depth 29 for compatibility with the
+5. The client appends 1 deterministic empty-subtree sibling
+   to extend the depth-25 path to depth 26 for compatibility with the
    Claim circuit. This is to account for the future nullifier tree growth, aiming to avoid chain upgrades for verifying key updates. See "Tree Depth vs. Circuit Depth" rationale for details.
 
 The client only computes a O(depth) number of hashes, namely to check validity
@@ -471,13 +471,13 @@ field modulus. This invariant is guaranteed by the sentinel spacing
 The PIR tiers provide 25 sibling hashes (9 from Tier 0, 6 from Tier 1,
 10 from Tier 2), one per tree depth from the leaf (depth 25) to the root
 of the depth-25 PIR tree (depth 0). To form the authentication path
-consumed by the Claim circuit, the client MUST append 4 additional
-sibling hashes corresponding to the canonical empty subtrees above that
-depth-25 root, yielding a complete depth-29 authentication path. See
+consumed by the Claim circuit, the client MUST append 1 additional
+sibling hash corresponding to the canonical empty subtree above that
+depth-25 root, yielding a complete depth-26 authentication path. See
 [Tree Depth vs. Circuit Depth]. After decrypting the PIR responses for
-Tiers 1 and 2 and appending those 4 deterministic siblings, the client
-MUST reconstruct the depth-29 Merkle root and verify it against the
-published depth-29 root of the exclusion tree.
+Tiers 1 and 2 and appending that 1 deterministic sibling, the client
+MUST reconstruct the depth-26 Merkle root and verify it against the
+published depth-26 root of the exclusion tree.
 
 ## Retrieval Schemes
 
@@ -584,13 +584,13 @@ For each note whose nullifier exclusion proof is needed:
    otherwise it MUST reject the leaf.
 
 6. **Assemble authentication path**: Combine the 9 + 6 + 10 = 25
-   sibling hashes from Tiers 0, 1, and 2. Append 4 deterministic
-   empty-subtree siblings as specified in [Authentication Path] to
-   obtain the complete depth-29 path.
+   sibling hashes from Tiers 0, 1, and 2. Append 1 deterministic
+   empty-subtree sibling as specified in [Authentication Path] to
+   obtain the complete depth-26 path.
 
-7. **Verify root**: Reconstruct the depth-29 Merkle root from the
+7. **Verify root**: Reconstruct the depth-26 Merkle root from the
    authentication path and the target leaf hash, and verify it against
-   the published depth-29 root.
+   the published depth-26 root.
 
 ### Computation Summary (Full Download)
 
@@ -2689,10 +2689,10 @@ $2^{15} = 32{,}768$ rows of 98,304 bytes each, totaling approximately
 3 GB. This is well within the 64 GB ceiling, leaving substantial
 headroom before the parameters would need to be revised.
 
-Even under the depth-29 tree supported by the Claim circuit
+Even under the depth-26 tree supported by the Claim circuit
 (see [Tree Depth vs. Circuit Depth]), an analogous three-tier layout
-would produce at most $2^{19} \approx 524{,}288$ Tier 2 rows. At the
-current row size this yields approximately 49 GB, still within the
+would produce at most $2^{16} = 65{,}536$ Tier 2 rows. At the
+current row size this yields approximately 6 GB, well within the
 64 GB bound.
 
 The YPIR paper [^YPIR] targets 128-bit computational security with
@@ -3073,27 +3073,27 @@ The PIR data structure uses a tree of depth 25, which is sufficient for
 the current nullifier set (up to
 $2^{25} \approx 33.5$ million leaf capacity). The Claim circuit
 defined in [^draft-valargroup-orchard-balance-proof], however, fixes
-the non-membership Merkle path depth at 29, supporting up to
-$2^{29} \approx 537$ million leaves.
+the non-membership Merkle path depth at 26, supporting up to
+$2^{26} \approx 67$ million leaves.
 
 These depths intentionally differ. The PIR server's tiered data
 structure materializes only the depth-25 tree, because that is sufficient
 for the current nullifier set and keeps Tier 2 within the desired size
-bound. The server also publishes a depth-29 root obtained by extending
-the depth-25 root upward with 4 completely empty sibling subtrees. Those
-top 4 siblings are deterministic: each is the root hash of a completely
+bound. The server also publishes a depth-26 root obtained by extending
+the depth-25 root upward with 1 completely empty sibling subtree. This
+sibling is deterministic: it is the root hash of a completely
 empty subtree, computable from the canonical empty leaf hash. The client
-appends these 4 known sibling hashes to the 25 siblings retrieved via
-PIR, producing a full depth-29 authentication path for the circuit.
+appends this 1 known sibling hash to the 25 siblings retrieved via
+PIR, producing a full depth-26 authentication path for the circuit.
 
-This costs approximately 1,320 additional constraints in the Claim
-circuit (4 extra Poseidon hashes, each roughly 330 constraints at width
+This costs approximately 330 additional constraints in the Claim
+circuit (1 extra Poseidon hash at roughly 330 constraints at width
 $t = 3$). This overhead does not increase the minimum SRS degree for
 the polynomial commitment scheme, because the total circuit size remains
 within the same power-of-two bound.
 
 The benefit is that the circuit's proving and verification keys support
-trees up to depth 29 without regeneration. As the Orchard nullifier set
+trees up to depth 26 without regeneration. As the Orchard nullifier set
 grows beyond $2^{25}$, only the PIR tier structure and server databases
 need to be updated. The circuit parameters remain unchanged. Changing
 the circuit depth would require new verifying keys, which are embedded
