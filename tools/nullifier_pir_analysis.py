@@ -75,7 +75,7 @@ Q = 268_369_921 * 249_561_089
 N = 2048
 D = 2048  # ring degree
 STDDEV = 6.4
-M_TIER2 = 262_144
+M_TIER2 = 32_768
 M_TIER1 = D  # 1 ring element × 2048 coefficients
 PACKING_RING_SAMPLES = 33  # 11 automorphisms × 3 gadget digits
 M_PACKING = PACKING_RING_SAMPLES * D  # expanded to scalar LWE: 67,584
@@ -457,7 +457,7 @@ def print_packing_key_estimates():
     for label, m_val, results in [
         ("Selector Tier 1 (1 ring elem)", M_TIER1, None),
         (f"Packing key ({PACKING_RING_SAMPLES} ring elems)", M_PACKING, pk_results),
-        ("Selector Tier 2 (128 ring elems)", M_TIER2, None),
+        ("Selector Tier 2 (16 ring elems)", M_TIER2, None),
     ]:
         if results:
             core = results.get("Core-SVP (ADPS16)", (None, None))[0]

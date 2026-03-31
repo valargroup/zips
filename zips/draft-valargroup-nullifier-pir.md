@@ -2086,9 +2086,9 @@ $A^T$.
 | Modulus $q$ | $66\,974\,689\,739\,603\,969 \approx 2^{55.89}$ |
 | Secret distribution | Each entry of $\mathbf{s}$ from $D_{\mathbb{Z},\sigma}$ (stddev $6.4$) |
 | Error distribution | Each entry of $e$ from $D_{\mathbb{Z},\sigma}$ (stddev $6.4$) |
-| Samples $m$ | $2\,048$ (Tier 1) or $262\,144$ (Tier 2) |
+| Samples $m$ | $2\,048$ (Tier 1) or $32\,768$ (Tier 2) |
 
-The Tier 2 instance provides the adversary with 262,144 samples and is
+The Tier 2 instance provides the adversary with 32,768 samples and is
 the binding case for security analysis.
 
 The public matrix $A \in \mathbb{Z}_q^{n \times m}$ is not uniformly
@@ -2098,8 +2098,8 @@ independent ring element in
 $R_q = \mathbb{Z}_q[X]/(X^{2048}+1)$ expanded from
 $\mathsf{seed\_A}$, as specified in
 [Negacyclic Extraction of the Selector Matrix]. For Tier 2,
-$B = 128$ independent ring elements determine the full
-$2048 \times 262\,144$ matrix.
+$B = 16$ independent ring elements determine the full
+$2048 \times 32\,768$ matrix.
 
 The hardness estimates in [Hardness Estimates] apply the lattice
 estimator to the LWE parameters $(n, q, \sigma, m)$ corresponding to
@@ -2192,7 +2192,7 @@ assumption.
 
 | Instance | Type | $n$ / $d$ | $\log_2 q$ | Stddev | Samples | Public-matrix constraint |
 |---|---|---|---|---|---|---|
-| Selector RLWE (Tier 2, binding) | Ring-LWE | $2048$ | $55.9$ | $6.4$ | $262\,144$ | Negacyclic blocks ($128$ ring elements) |
+| Selector RLWE (Tier 2, binding) | Ring-LWE | $2048$ | $55.9$ | $6.4$ | $32\,768$ | Negacyclic blocks ($16$ ring elements) |
 | Selector RLWE (Tier 1) | Ring-LWE | $2048$ | $55.9$ | $6.4$ | $2\,048$ | Negacyclic block ($1$ ring element) |
 | Packing-key RLWE | Ring-LWE | $2048$ | $55.9$ | $6.4$ | $67\,584$ | Negacyclic blocks ($33$ ring elements) |
 | Packing-key circular security | KDM-RLWE | $2048$ | $55.9$ | $6.4$ | $67\,584$ | + encrypts $B_\mathsf{ks}^u \cdot \tau_{k_r}(s^\star)$ under $s^\star$ |
@@ -2358,7 +2358,7 @@ bare Core-SVP yields a bound above 125 bits for this instance.
 
 The following table shows how bit-security varies with the noise
 standard deviation (all other parameters fixed at $n = 2048$,
-$q \approx 2^{55.9}$, $m = 262\,144$):
+$q \approx 2^{55.9}$, $m = 32\,768$):
 
 | Stddev $s$ | Gaussian width $s\sqrt{2\pi}$ | Core-SVP (bits) | Matzov (bits) | Core $\geq 125$ | Matzov $\geq 125$ |
 |---|---|---|---|---|---|
@@ -2512,9 +2512,9 @@ For worst-case analysis (all 14-bit words maximal):
 
 $$V_\text{scan}^{\max} = m \cdot (2^{14} - 1)^2 \cdot s^2.$$
 
-For Tier 2 ($m = 262\,144$):
-$V_\text{scan}^{\max} \approx 2^{51.4}$,
-$\sigma_\text{scan} \approx 2^{25.7}$.
+For Tier 2 ($m = 32\,768$):
+$V_\text{scan}^{\max} \approx 2^{48.4}$,
+$\sigma_\text{scan} \approx 2^{24.2}$.
 
 ### CDKS Packing Noise (11 Levels)
 
@@ -2587,33 +2587,33 @@ The total per-slot noise variance at decryption is the sum of the
 packing and modulus-switching contributions:
 
 $$V_\text{total} = V_\text{packed} + V_\text{ms}
-\approx 2^{74.8} + 2^{69.4} \approx 2^{74.9}.$$
+\approx 2^{74.8} + 2^{69.4} \approx 2^{74.8}.$$
 
 The packing key-switching noise dominates.
-$\sigma_\text{total} \approx 2^{37.5}$.
+$\sigma_\text{total} \approx 2^{37.4}$.
 
 | Stage | $\log_2 V$ | $\log_2 \sqrt{V}$ |
 |---|---|---|
-| Scan noise (worst case, Tier 2) | 51.4 | 25.7 |
+| Scan noise (worst case, Tier 2) | 48.4 | 24.2 |
 | Single key-switch level $V_\text{ks}$ | 54.4 | 27.2 |
 | After CDKS packing (11 levels) | 74.8 | 37.4 |
 | Modulus switching (mask + payload) | 69.4 | 34.7 |
-| **Total at decryption** | **74.9** | **37.5** |
+| **Total at decryption** | **74.8** | **37.4** |
 
 Decryption succeeds when every slot's noise magnitude is below
 $\Delta/2 \approx 2^{40.9}$. With
-$t = \Delta / (2\sigma_\text{total}) = 2^{40.9} / 2^{37.5} = 2^{3.4} \approx 10.6$
+$t = \Delta / (2\sigma_\text{total}) = 2^{40.9} / 2^{37.4} = 2^{3.5} \approx 11.2$
 standard deviations, the sub-Gaussian tail bound gives:
 
 $$\Pr\bigl[|X| > t \cdot \sigma_\text{total}\bigr]
-\leq 2\exp(-t^2/2) \approx 2^{-80}.$$
+\leq 2\exp(-t^2/2) \approx 2^{-90}.$$
 
 For Tier 2, each response consists of
-$\lceil 14\,007 / 2048 \rceil = 7$ packed RLWE ciphertexts with
-$7 \times 2048 = 14\,336$ total slots. Applying a union bound:
+$\lceil 56\,174 / 2048 \rceil = 28$ packed RLWE ciphertexts with
+$28 \times 2048 = 57\,344$ total slots. Applying a union bound:
 
 $$\Pr[\text{any slot fails}]
-\leq 14\,336 \times 2^{-80} < 2^{14} \cdot 2^{-80} = 2^{-66}.$$
+\leq 57\,344 \times 2^{-90} < 2^{16} \cdot 2^{-90} = 2^{-74}.$$
 
 This is well below the $2^{-40}$ correctness target.
 
@@ -2696,7 +2696,7 @@ independent analysis in [Noise Analysis] supports the following
 model-qualified conclusion for this ZIP: for the selector Ring-LWE
 instance, the binding estimate is 131.5 bits under Matzov and 104.0
 bits under Core-SVP (see [Hardness Estimates]), while the stage-by-stage
-noise budget yields a correctness error of $\leq 2^{-66}$ (see
+noise budget yields a correctness error of $\leq 2^{-74}$ (see
 [Correctness Analysis]). The Kyber512 calibration in
 [Kyber512 Calibration] provides additional heuristic context for the
 cost-model gap, but is not an independent hardness proof for this PIR
