@@ -48,7 +48,8 @@ Validator
 Election Authority (EA)
 : A virtual signing key, jointly constructed by validators during a key
   ceremony so that no single party holds the private key. Used to encrypt
-  vote shares and decrypt the final tally. See [^draft-ceremony] for the
+  vote shares and decrypt the final tally. See
+  `draft-valargroup-ea-key-ceremony` [^draft-ceremony] for the
   ceremony protocol.
 
 Snapshot height
@@ -58,7 +59,8 @@ Snapshot height
 For definitions of cryptographic terms including *alternate nullifier*,
 *nullifier non-membership tree*, *nullifier domain*, *pool snapshot*, and
 *claim*, see the Orchard Proof-of-Balance ZIP [^draft-balance-proof]. For
-EA key ceremony terms, see [^draft-ceremony]. For PIR-related terms, see
+EA key ceremony terms, see `draft-valargroup-ea-key-ceremony`
+[^draft-ceremony]. For PIR-related terms, see `draft-valargroup-gov-pir`
 [^draft-pir].
 
 
@@ -111,8 +113,8 @@ chain, operator roles, and voting round lifecycle.
 - Bootstrap operators learn the network identities of validators
   during onboarding (see [Onboarding Validators]).
 - Validator power distribution affects the trust model for the EA
-  key ceremony. See [^draft-ceremony] for EA-specific privacy
-  implications.
+  key ceremony. See `draft-valargroup-ea-key-ceremony`
+  [^draft-ceremony] for EA-specific privacy implications.
 
 
 # Requirements
@@ -150,7 +152,7 @@ The vote chain stores:
 
 The vote chain verifies a zero-knowledge proof for each transaction type:
 delegation, vote, and share reveal. The proof circuits are specified in
-[^draft-voting-protocol].
+`draft-valargroup-voting-protocol` [^draft-voting-protocol].
 
 ## Deployment Architecture
 
@@ -159,8 +161,8 @@ A complete deployment consists of:
 - **Vote chain nodes** — one or more `shieldedvoted` instances running CometBFT
   consensus. Each node embeds a helper server that accepts vote share
   payloads from clients and submits the corresponding share reveal
-  transactions at client-specified times
-  (see [^draft-submission-server]).
+  transactions at client-specified times (see
+  `draft-valargroup-submission-server` [^draft-submission-server]).
 - **Nullifier service** — a PIR server that provides private nullifier
   exclusion proofs to voters (see [Nullifier Service (PIR Server)]).
 - **Service discovery API** — a centralized bootstrap directory that
@@ -195,9 +197,9 @@ Assignment rules:
 
 ### Validator
 
-Validators participate in consensus, the EA key ceremony
-(see [^draft-ceremony]), and automatic tally computation. Each validator
-maintains three keypairs:
+Validators participate in consensus, the EA key ceremony (see
+`draft-valargroup-ea-key-ceremony` [^draft-ceremony]), and automatic
+tally computation. Each validator maintains three keypairs:
 
 - **Consensus keypair**: used for CometBFT consensus.
 - **Account keypair**: used for submitting chain transactions.
@@ -267,9 +269,11 @@ The service pipeline (each step has a corresponding
 1. **Ingest**: fetch Orchard nullifiers from Zcash mainnet via a
    lightwallet server (`lightwalletd`), or download a pre-built snapshot.
 2. **Export**: build the nullifier non-membership tree (Indexed Merkle
-   Tree as specified in [^draft-balance-proof]) and export the three-tier
-   PIR database as specified in [^draft-pir]. The exported files allow
-   the server to restart without rebuilding the tree from raw nullifiers.
+   Tree as specified in `draft-valargroup-orchard-balance-proof`
+   [^draft-balance-proof]) and export the three-tier PIR database as
+   specified in `draft-valargroup-gov-pir` [^draft-pir]. The exported
+   files allow the server to restart without rebuilding the tree from
+   raw nullifiers.
 3. **Serve**: expose a query endpoint for voters to privately retrieve
    exclusion proofs.
 
@@ -335,8 +339,9 @@ The vote round ID is a Poseidon hash of the round parameters
 note commitment root). It is a Pallas field element because it enters
 ZKP circuits as a public input.
 
-The round enters the **PENDING** state. The EA key ceremony
-(see [^draft-ceremony]) runs automatically. On successful completion, the
+The round enters the **PENDING** state. The EA key ceremony (see
+`draft-valargroup-ea-key-ceremony` [^draft-ceremony]) runs
+automatically. On successful completion, the
 round transitions to **ACTIVE**, the voting window opens, and the
 transition timestamp is recorded as `ceremony_phase_start`. Clients use
 `ceremony_phase_start` together with `vote_end_time` to compute the
@@ -347,9 +352,11 @@ last-moment buffer for submission timing
 
 1. **PENDING**: round created, awaiting EA key ceremony.
 2. **ACTIVE**: ceremony complete, voting window open. Voters may delegate,
-   vote, and submit shares (see [^draft-voting-protocol]).
+   vote, and submit shares (see `draft-valargroup-voting-protocol`
+   [^draft-voting-protocol]).
 3. **TALLYING**: `vote_end_time` has passed. Tally decryption runs
-   automatically (see [^draft-ceremony]).
+   automatically (see `draft-valargroup-ea-key-ceremony`
+   [^draft-ceremony]).
 4. **FINALIZED**: tally published and verifiable.
 
 ### Timing Parameters
@@ -373,8 +380,8 @@ round:
 - Recompute the aggregate El Gamal ciphertexts per (proposal, decision)
   from individual share reveals.
 - Verify tally correctness by re-deriving the Lagrange combination of
-  stored partial decryptions and confirming the decrypted result
-  (see [^draft-ceremony]).
+  stored partial decryptions and confirming the decrypted result (see
+  `draft-valargroup-ea-key-ceremony` [^draft-ceremony]).
 
 Because the partial decryptions are stored on-chain, any party can
 re-derive the Lagrange combination and check the final tally without
