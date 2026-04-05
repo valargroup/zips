@@ -28,7 +28,7 @@ Voting round
   mainnet snapshot and a fresh Election Authority key.
 
 Vote round ID
-: A unique identifier for a voting round. See [Round Creation] for the
+: A unique identifier for a voting round. See [Poll Creation] for the
   computation.
 
 Poll runner
@@ -317,7 +317,7 @@ Selecting the snapshot triggers:
    root ($\mathsf{nullifier\_imt\_root}$) are captured at the snapshot
    height.
 
-### Round Creation
+### Poll Creation
 
 The vote manager publishes a new round via `MsgCreateVotingSession` with
 the following parameters:
