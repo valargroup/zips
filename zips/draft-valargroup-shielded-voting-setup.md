@@ -158,7 +158,7 @@ delegation, vote, and share reveal. The proof circuits are specified in
 
 A complete deployment consists of:
 
-- **Vote chain nodes** — one or more `shieldedvoted` instances running CometBFT
+- **Vote chain nodes** — one or more `svoted` instances running CometBFT
   consensus. Each node embeds a helper server that accepts vote share
   payloads from clients and submits the corresponding share reveal
   transactions at client-specified times (see
@@ -229,7 +229,7 @@ Halo 2 and RedPallas verification), initializes a single-validator chain,
 and starts the node.
 
 Initialization generates a Cosmos validator key, a Pallas keypair for the
-EA ceremony, and a genesis block with the chain ID `zvote-1`. The node
+EA ceremony, and a genesis block with the chain ID `svote-1`. The node
 exposes the standard CometBFT P2P, RPC, and Cosmos SDK REST endpoints.
 
 After the chain is producing blocks, the bootstrap operator registers the
@@ -241,7 +241,7 @@ so that joining validators and wallet clients can find the network.
 New validators join through `join.sh` [^join-sh], a self-contained
 script that requires no local clone of the repository. The script:
 
-1. Downloads pre-built `shieldedvoted` and `create-val-tx` binaries and
+1. Downloads pre-built `svoted` and `create-val-tx` binaries and
    verifies their SHA-256 checksums.
 2. Discovers a live validator via the service discovery API.
 3. Fetches genesis and syncs to the current height.
