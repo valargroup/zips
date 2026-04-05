@@ -288,8 +288,8 @@ CometBFT P2P identity and genesis, and connect. Once connected,
 CometBFT's peer exchange (PEX) protocol handles discovery of
 additional peers — the API is only needed for initial bootstrap.
 
-Wallet clients (e.g. Zodl) query the same API to discover vote chain
-and PIR server endpoints for voter-facing operations.
+Wallet clients query the same API to discover vote chain and PIR
+server endpoints for voter-facing operations.
 
 New validators register themselves with the API after joining. The
 bootstrap operator approves pending registrations through an admin
