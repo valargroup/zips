@@ -345,8 +345,9 @@ automatically. On successful completion, the
 round transitions to **ACTIVE**, the voting window opens, and the
 transition timestamp is recorded as `ceremony_phase_start`. Clients use
 `ceremony_phase_start` together with `vote_end_time` to compute the
-last-moment buffer for submission timing
-(see [^draft-submission-server]).
+last-moment buffer for submission timing, as specified in the
+"Last-Moment Buffer" section of `draft-valargroup-submission-server`
+[^draft-submission-server-lmb].
 
 ### Round Lifecycle
 
@@ -455,6 +456,8 @@ mitigation is to spin up a new chain with the fix.
 [^draft-pir]: [Draft ZIP: Private Information Retrieval for Nullifier Exclusion Proofs](draft-valargroup-gov-pir.md)
 
 [^draft-submission-server]: [Draft ZIP: Vote Share Submission Server](draft-valargroup-submission-server.md)
+
+[^draft-submission-server-lmb]: [Draft ZIP: Vote Share Submission Server, Section: Last-Moment Buffer](draft-valargroup-submission-server.md#last-moment-buffer)
 
 [^draft-onchain-voting]: [Draft ZIP: On-chain Accountable Voting](draft-ecc-onchain-accountable-voting.md)
 
