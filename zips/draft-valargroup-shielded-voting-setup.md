@@ -139,6 +139,58 @@ chain, operator roles, and voting round lifecycle.
 
 # Specification
 
+## Proposals and Decisions
+
+The voting process specified by this ZIP allows a poll runner to put
+one or more questions — *proposals* — to eligible voters. For each
+proposal, voters choose exactly one of a predefined set of labeled
+*options*; the chosen option is the voter's *decision* for that
+proposal.
+
+### Structure of a proposal
+
+Each proposal has:
+
+- A **title**, short and human-readable.
+- An optional **description** providing additional context.
+- Between 2 and 8 **options**, each carrying a human-readable label.
+  Option labels MUST be non-empty ASCII strings.
+
+Proposals in a voting round are assigned 1-indexed sequential
+identifiers; options within a proposal are assigned 0-indexed
+sequential indices.
+
+### Decisions
+
+A **decision** is a voter's chosen option for a specific proposal,
+represented as the option's 0-indexed position within that proposal's
+option list. Decisions are recorded in the encrypted share
+accumulator, keyed by `(proposal_id, vote_decision)`; see
+`draft-valargroup-voting-protocol` [^draft-voting-protocol] for the
+cryptographic construction.
+
+### Kinds of polls that can be expressed
+
+A voting round can carry **1 to 15 independent proposals**, and each
+proposal can offer **2 to 8 labeled options**. This is sufficient for:
+
+- Yes/no questions ("Approve proposal X?" with options Yes / No).
+- Multiple-choice preference questions (for example, choosing among
+  named candidates or funding tiers).
+- Rating-style questions using a fixed option ladder.
+
+The following ballot shapes are out of scope for this specification:
+
+- Free-form write-in answers.
+- Ranked-choice or weighted-ranking ballots.
+- More than 15 proposals in a single voting round, or more than 8
+  options in a single proposal.
+
+The 15-proposal upper bound is imposed by the zero-knowledge vote
+authority bitmask (1 bit is reserved as a sentinel). Polls requiring
+more proposals or richer ballot structures are split across multiple
+rounds or expressed through an external layer.
+
 ## System Overview
 
 The coinholder voting system operates on a purpose-built Cosmos SDK vote
