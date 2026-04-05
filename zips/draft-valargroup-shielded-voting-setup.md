@@ -245,9 +245,11 @@ validators; all other transfers — including the standard Cosmos bank
 
 The amount transferred to each validator at bonding time determines
 their consensus voting power. An even distribution across validators
-reduces the risk of consensus capture. This is a one-time role at
-genesis; after the initial validator set is funded, the bootstrap
-operator role ceases to exist.
+reduces the risk of consensus capture. The bootstrap operator's
+activities are confined to genesis. The keypair that controls the
+genesis `vote_manager` address continues afterwards as the initial
+vote manager (see [Vote Manager]), and MAY transfer that role via
+`MsgSetVoteManager`.
 
 ### Vote Manager
 
@@ -274,18 +276,6 @@ tally computation. Each validator maintains three keypairs:
 
 Validators join the network via the automated `join.sh` [^join-sh]
 script or by building from source. See [Onboarding Validators].
-
-### Role Summary
-
-| Action                   | Bootstrap Op. | Vote Manager | Validator |
-| ------------------------ | :-----------: | :----------: | :-------: |
-| Generate genesis         |       X       |              |           |
-| Fund validators          |       X       |              |           |
-| Create voting round      |               |      X       |           |
-| Participate in consensus |               |              |     X     |
-| EA key ceremony          |               |              |     X     |
-| Compute tally            |               |              |     X     |
-| Verify tally             |       X       |      X       |     X     |
 
 ## Vote Chain Infrastructure
 
@@ -437,9 +427,9 @@ last-moment buffer for submission timing, as specified in the
 
 ## Verification and Auditing
 
-Anyone MAY run a **monitoring node** — a full chain replica that does not
-participate in consensus — to independently verify all aspects of a voting
-round:
+The vote chain is publicly readable. Any party running a full node
+of the chain — a validator, the vote manager, or an independent
+observer — can verify all aspects of a voting round:
 
 - Verify every zero-knowledge proof submitted in delegation, vote, and
   share reveal transactions.
