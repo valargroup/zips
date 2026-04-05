@@ -45,6 +45,11 @@ Validator
 : A vote chain consensus participant. See [Validator] under Roles for
   responsibilities and keypair details.
 
+Bonded validator
+: A validator whose stake is active under the standard Cosmos SDK
+  `x/staking` module [^cosmos-staking]: its delegation is committed,
+  it participates in consensus, and it is eligible to produce blocks.
+
 Election Authority (EA)
 : A virtual signing key, jointly constructed by validators during a key
   ceremony so that no single party holds the private key. Used to encrypt
@@ -175,12 +180,22 @@ A complete deployment consists of:
 
 ### Bootstrap Operator
 
-The bootstrap operator generates the vote chain genesis block, funds
-validators from the token reserve, and controls initial consensus power
-distribution. Funding amount determines each validator's consensus voting
-power. An even distribution across validators reduces the risk of consensus
-capture. This is a one-time role at genesis; after the initial validator
-set is funded, the bootstrap operator role ceases to exist.
+The bootstrap operator generates the vote chain genesis block and
+provisions the initial validator set. At genesis, a single vote
+manager account is created with a balance of the chain's native token
+(denom `usvote`) sized to fund all planned validators. From that
+account the bootstrap operator funds each validator via
+`MsgAuthorizedSend`, a transfer message gated by the vote chain's
+ante handler: the vote manager MAY send to any address, and bonded
+validators MAY send to the vote manager or to other bonded
+validators; all other transfers — including the standard Cosmos bank
+`MsgSend` and `MsgMultiSend` messages — are rejected.
+
+The amount transferred to each validator at bonding time determines
+their consensus voting power. An even distribution across validators
+reduces the risk of consensus capture. This is a one-time role at
+genesis; after the initial validator set is funded, the bootstrap
+operator role ceases to exist.
 
 ### Vote Manager
 
@@ -462,3 +477,5 @@ mitigation is to spin up a new chain with the fix.
 [^draft-onchain-voting]: [Draft ZIP: On-chain Accountable Voting](draft-ecc-onchain-accountable-voting.md)
 
 [^join-sh]: [join.sh — validator join script](https://gist.github.com/greg0x/71bec808fbd02a7ef2a29b4386b8d842)
+
+[^cosmos-staking]: [Cosmos SDK `x/staking` module documentation](https://docs.cosmos.network/main/build/modules/staking)
