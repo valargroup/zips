@@ -128,10 +128,6 @@ chain, operator roles, and voting round lifecycle.
 
 - Governance policy decisions such as proposal eligibility, quorum
   requirements, and fund disbursement rules (see ZIP 1016 [^zip-1016]).
-- Cryptographic protocols and voter-facing interactions (proof-of-balance,
-  key ceremony, PIR, delegation, vote casting, share reveal, on-chain
-  accountable voting) — see [^draft-voting-protocol] and its companion
-  ZIPs.
 
 
 # Specification
