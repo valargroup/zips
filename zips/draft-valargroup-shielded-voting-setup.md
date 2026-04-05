@@ -96,14 +96,23 @@ chain, operator roles, and voting round lifecycle.
 
 # Privacy Implications
 
-- Communication with the PIR server reveals that a client is participating
-  in the voting process, though the PIR protocol hides which specific
-  nullifier is being queried.
-- The vote chain is a public ledger. All transactions (delegation, vote,
-  share reveal) are visible, but their contents are encrypted or
-  zero-knowledge proven. Node operators see encrypted data, not plaintext.
-- Validator power distribution affects the trust model for the EA key
-  ceremony. See [^draft-ceremony] for EA-specific privacy implications.
+- Zero-knowledge proofs and encryption hide the contents of
+  delegations, votes, and share reveals, but not the network-layer
+  metadata associated with their submission. A vote chain validator
+  sees the source IP, submission timestamp, connection correlation,
+  and P2P propagation pattern of every transaction it receives.
+- PIR queries against the nullifier service are private in content
+  but not in timing: a nullifier service operator sees the source IP
+  and time of each query, which reveals that a given client is
+  participating in the current voting round.
+- The vote chain is a public ledger. Transaction contents are
+  encrypted or zero-knowledge-proven, but their existence, ordering,
+  and block-inclusion timing are a permanent public record.
+- Bootstrap operators learn the network identities of validators
+  during onboarding (see [Onboarding Validators]).
+- Validator power distribution affects the trust model for the EA
+  key ceremony. See [^draft-ceremony] for EA-specific privacy
+  implications.
 
 
 # Requirements
