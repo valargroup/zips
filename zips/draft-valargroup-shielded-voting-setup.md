@@ -254,15 +254,14 @@ vote manager (see [Vote Manager]), and MAY transfer that role via
 ### Vote Manager
 
 The vote manager creates voting rounds by submitting
-transactions with a `MsgCreateVotingSession`. Only the vote manager role can
-publish new rounds.
+transactions with a `MsgCreateVotingSession`. Only the vote manager
+role can publish new rounds.
 
-Assignment rules:
-
-- **Bootstrap phase**: any bonded validator MAY claim the vote manager
-  role.
-- **Subsequent rounds**: the current vote manager retains the role, or any
-  bonded validator and the current vote manager MAY reassign it.
+The vote manager address is set in the genesis block (see
+[Genesis Validator Setup]). The current vote manager MAY transfer
+the role to another address via `MsgSetVoteManager`; the transfer
+is atomic and moves the full account balance to the new address.
+No other account can claim or reassign the role.
 
 ### Validator
 
@@ -480,22 +479,18 @@ self-registration, admin-approval, and auto-bonding flow allows the
 network to grow without requiring validators to build from source or
 understand Cosmos SDK tooling.
 
-**Vote manager reassignment by any validator**: the current design allows
-any bonded validator to reassign the vote manager role. A threshold-based
-reassignment (requiring a supermajority of validators to agree) would be
-more robust against a single rogue validator seizing control of round
-creation. This is deferred for scope reasons — in the worst case, a
-compromised vote manager can only create rounds, not forge votes, and the
-mitigation is to spin up a new chain with the fix.
+**Vote manager reassignment**: only the current vote manager can
+transfer the role (via `MsgSetVoteManager`). This is a deliberate
+single-party control: the vote manager can create rounds but cannot
+forge votes, and the worst-case mitigation for a compromised vote
+manager is to spin up a new chain.
 
 
 # Open Issues
 
-- **Vote manager reassignment governance**: should reassignment of the
-  vote manager require a supermajority vote from validators rather
-  than any single bonded validator? See the Rationale entry above.
 - **Role consolidation**: evaluate whether the bootstrap operator and
-  vote manager roles should be merged into a single administrative role.
+  vote manager concepts (already the same keypair at genesis; see
+  [Bootstrap Operator]) merit separate treatment in the specification.
 
 
 # References
