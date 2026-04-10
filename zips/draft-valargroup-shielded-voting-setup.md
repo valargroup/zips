@@ -557,23 +557,65 @@ last-moment buffer for submission timing, as specified in the
 
 ## Verification and Auditing
 
-The vote chain is publicly readable. Any party running a full node
-of the chain — a validator, the vote manager, or an independent
-observer — can verify all aspects of a voting round:
+The vote chain is publicly readable. Any party running a full
+node of the chain — a validator, the vote manager, or an
+independent observer — can verify all aspects of a voting round
+by replaying chain state and applying the verification
+procedures defined in companion ZIPs.
 
-- Verify every zero-knowledge proof submitted in delegation, vote, and
-  share reveal transactions.
-- Track all three nullifier sets (governance, VAN, share) for
-  double-spending.
-- Recompute the aggregate El Gamal ciphertexts per (proposal, decision)
-  from individual share reveals.
-- Verify tally correctness by re-deriving the Lagrange combination of
-  stored partial decryptions and confirming the decrypted result (see
-  `draft-valargroup-ea-key-ceremony` [^draft-ceremony]).
+This section uses the following procedures imported by
+reference:
 
-Because the partial decryptions are stored on-chain, any party can
-re-derive the Lagrange combination and check the final tally without
-relying on a single validator's output.
+- **Out-of-Circuit Verification of the Claim proof** in
+  `draft-valargroup-orchard-balance-proof`
+  [^draft-balance-proof] — the abstract balance-proof primitive
+  on which the Delegation Proof is built.
+- **Out-of-Circuit Verification of the Delegation Proof, the
+  Vote Proof, and the Vote Reveal Proof** in
+  `draft-valargroup-shielded-voting` [^draft-voting-protocol].
+- **Authentication Path** verification and the exclusion-range
+  check for the nullifier non-membership tree, in
+  `draft-valargroup-nullifier-pir` [^draft-pir].
+- **Proof Verification** (DLEQ verification of partial
+  decryptions) and the **Tally** procedure (Lagrange combination
+  and plaintext recovery), in `draft-valargroup-ea-key-ceremony`
+  [^draft-ceremony].
+
+A full-node operator combines these procedures to verify a
+voting round across three layers:
+
+- **Per-transaction zero-knowledge proof verification.** Each
+  delegation, vote, and share reveal transaction carries a Halo
+  2 proof that is checked at inclusion against the
+  Out-of-Circuit Verification rules in
+  `draft-valargroup-shielded-voting`. Those rules apply the
+  Claim proof verification from the balance proof ZIP and the
+  Authentication Path / exclusion-range checks from the PIR
+  ZIP transitively, so a single proof verification enforces the
+  structural correctness of all three layers at once.
+
+- **Nullifier set integrity.** The chain maintains three
+  nullifier sets — governance nullifiers (from delegation), VAN
+  nullifiers (from voting), and share nullifiers (from share
+  reveals) — and rejects any transaction that would re-use a
+  previously published nullifier. A full-node operator confirms
+  set integrity by replaying every accepted transaction and
+  checking that no nullifier appears twice.
+
+- **Tally correctness.** A full-node operator re-aggregates the
+  encrypted share ciphertexts per (`proposal_id`, `vote_decision`)
+  from the on-chain share reveal transactions, applies the DLEQ
+  Proof Verification to each stored partial decryption,
+  re-derives the Lagrange combination, and confirms the
+  decrypted aggregate following the Tally procedure in
+  `draft-valargroup-ea-key-ceremony`.
+
+Because every input to verification — proofs, nullifiers,
+ciphertexts, and partial decryptions — is stored on the public
+vote chain, no full-node operator needs to trust any other
+participant. A round that auto-finalized due to a TALLYING
+timeout (see [Round Lifecycle]) verifies as having no tally;
+this is itself a verifiable property of the chain state.
 
 
 # Rationale
