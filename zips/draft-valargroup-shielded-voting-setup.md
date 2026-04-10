@@ -427,9 +427,11 @@ vote manager, or if the `proposals` field violates the constraints
 in [Proposals and Decisions].
 
 The vote chain derives the 32-byte `vote_round_id` from the
-transaction fields after inclusion. The construction uses Poseidon
-hashing and produces a Pallas field element so that the round ID
-can enter ZKP circuits as a public input.
+transaction fields after inclusion, using the Poseidon construction
+specified in the "Voting Round Identifier" section of
+`draft-valargroup-shielded-voting`
+[^draft-voting-protocol-vri]. The result is a Pallas field element
+so that the round ID can enter ZKP circuits as a public input.
 
 The round enters the **PENDING** state. The EA key ceremony (see
 `draft-valargroup-ea-key-ceremony` [^draft-ceremony]) runs
@@ -537,7 +539,9 @@ manager is to spin up a new chain.
 
 [^draft-balance-proof]: [Draft ZIP: Orchard Proof-of-Balance](draft-valargroup-orchard-balance-proof.md)
 
-[^draft-voting-protocol]: [Draft ZIP: Zcash Shielded Voting Protocol](draft-valargroup-voting-protocol.md)
+[^draft-voting-protocol]: [Draft ZIP: Zcash Shielded Voting Protocol](draft-valargroup-shielded-voting.md)
+
+[^draft-voting-protocol-vri]: [Draft ZIP: Zcash Shielded Voting Protocol, Section: Voting Round Identifier](draft-valargroup-shielded-voting.md#voting-round-identifier)
 
 [^draft-ceremony]: [Draft ZIP: Election Authority Key Ceremony](draft-valargroup-ea-key-ceremony.md)
 
