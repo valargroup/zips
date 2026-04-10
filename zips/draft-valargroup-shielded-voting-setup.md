@@ -45,6 +45,10 @@ Validator
 : A vote chain consensus participant. See [Validator] under Roles for
   responsibilities and keypair details.
 
+Nullifier service operator
+: The entity that runs the nullifier exclusion PIR server. See
+  [Nullifier Service Operator] under Roles for responsibilities.
+
 Bonded validator
 : A validator whose stake is active under the standard Cosmos SDK
   `x/staking` module [^cosmos-staking]: its delegation is committed,
@@ -285,6 +289,22 @@ tally computation. Each validator maintains three keypairs:
 Validators join the network via the automated `join.sh` [^join-sh]
 script or by building from source. See [Onboarding Validators].
 
+Each validator additionally runs the submission server bundled
+into the `svoted` binary, which receives encrypted vote share
+payloads from voters and submits the corresponding share reveal
+transactions on their behalf. See `draft-valargroup-submission-server`
+[^draft-submission-server].
+
+### Nullifier Service Operator
+
+A nullifier service operator runs the nullifier exclusion PIR
+server that wallet clients query to obtain Merkle non-membership
+proofs for the Zcash mainnet nullifier set at the snapshot
+height. The PIR server is a separate binary, distributed
+independently of the vote chain node, with its own ingest pipeline
+and HTTP query endpoint. Specified in
+`draft-valargroup-nullifier-pir` [^draft-pir].
+
 ## Vote Chain Infrastructure
 
 ### Genesis Validator Setup
@@ -514,7 +534,7 @@ manager is to spin up a new chain.
 
 [^draft-ceremony]: [Draft ZIP: Election Authority Key Ceremony](draft-valargroup-ea-key-ceremony.md)
 
-[^draft-pir]: [Draft ZIP: Private Information Retrieval for Nullifier Exclusion Proofs](draft-valargroup-gov-pir.md)
+[^draft-pir]: [Draft ZIP: Private Information Retrieval for Nullifier Exclusion Proofs](draft-valargroup-nullifier-pir.md)
 
 [^draft-submission-server]: [Draft ZIP: Vote Share Submission Server](draft-valargroup-submission-server.md)
 
