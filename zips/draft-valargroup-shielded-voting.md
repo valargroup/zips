@@ -290,6 +290,48 @@ $\mathsf{Enc}(v, r) = \bigl([r]\, G,\; [v]\, G + [r]\, \mathsf{ea}\_\mathsf{pk}\
 
 ## Data Structures
 
+### Voting Round Identifier
+
+Each voting round is identified by a 32-byte
+$\mathsf{voting}\_{\mathsf{round}\_\mathsf{id}}$, derived
+deterministically from the round's setup parameters by Poseidon
+hashing. Validators and verifiers compute it from the same inputs
+and check that it matches the on-chain identifier.
+
+$$\mathsf{voting}\_{\mathsf{round}\_\mathsf{id}} = \mathsf{Poseidon}\bigl(\mathsf{snapshot}\_\mathsf{height},\ \mathsf{bh}\_\mathsf{lo},\ \mathsf{bh}\_\mathsf{hi},\ \mathsf{ph}\_\mathsf{lo},\ \mathsf{ph}\_\mathsf{hi},\ \mathsf{vote}\_\mathsf{end}\_\mathsf{time},\ \mathsf{nullifier}\_\mathsf{imt}\_\mathsf{root},\ \mathsf{nc}\_\mathsf{root}\bigr)$$
+
+The hash uses the $\mathsf{ConstantLength}\langle 8 \rangle$ variant
+of the Poseidon instantiation specified in [Poseidon Instantiation].
+
+where:
+
+- $\mathsf{snapshot}\_\mathsf{height} \in \{ 0 .. 2^{64}-1 \}$ — the
+  Zcash mainnet block height of the chosen snapshot, encoded as a
+  Pallas base field element.
+- $\mathsf{bh}\_\mathsf{lo}, \mathsf{bh}\_\mathsf{hi} \in \{ 0 .. 2^{128}-1 \}$
+  — the low and high 128-bit halves of
+  $\mathsf{snapshot}\_\mathsf{blockhash}$ in little-endian byte
+  order, each encoded as a Pallas base field element.
+- $\mathsf{ph}\_\mathsf{lo}, \mathsf{ph}\_\mathsf{hi} \in \{ 0 .. 2^{128}-1 \}$
+  — the low and high 128-bit halves of $\mathsf{proposals}\_\mathsf{hash}$
+  in little-endian byte order.
+- $\mathsf{vote}\_\mathsf{end}\_\mathsf{time} \in \{ 0 .. 2^{64}-1 \}$
+  — Unix timestamp (seconds) after which votes are no longer
+  accepted, encoded as a Pallas base field element.
+- $\mathsf{nullifier}\_\mathsf{imt}\_\mathsf{root} \in \{ 0 .. q_{\mathbb{P}}-1 \}$
+  — root of the nullifier non-membership IMT at the snapshot
+  height. MUST be a canonical Pallas base field element.
+- $\mathsf{nc}\_\mathsf{root} \in \{ 0 .. q_{\mathbb{P}}-1 \}$ —
+  Orchard note commitment tree root at the snapshot height. MUST
+  be a canonical Pallas base field element.
+
+$\mathsf{snapshot}\_\mathsf{blockhash}$ and
+$\mathsf{proposals}\_\mathsf{hash}$ are split into two 128-bit
+limbs because they are not necessarily canonical Pallas field
+elements. $\mathsf{nullifier}\_\mathsf{imt}\_\mathsf{root}$ and
+$\mathsf{nc}\_\mathsf{root}$ are themselves Poseidon-derived in
+their respective trees and are therefore already canonical.
+
 ### Vote Authority Note (VAN)
 
 A VAN represents spendable voting authority on the vote chain. Its
@@ -1238,6 +1280,7 @@ The following table lists every Poseidon call site in this protocol:
 
 | Hash | Inputs ($L$) | Mode | Permutations |
 |---|---|---|---|
+| Voting round identifier | 8 | $\mathsf{ConstantLength}\langle 8 \rangle$ | 4 |
 | VAN core | 6 | $\mathsf{ConstantLength}\langle 6 \rangle$ | 3 |
 | VAN blinding | 2 | $\mathsf{ConstantLength}\langle 2 \rangle$ | 1 |
 | VAN nullifier | 4 | $\mathsf{ConstantLength}\langle 4 \rangle$ | 2 |
