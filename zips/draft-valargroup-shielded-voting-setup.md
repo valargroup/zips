@@ -266,9 +266,8 @@ vote manager (see [Vote Manager]), and MAY transfer that role via
 
 ### Vote Manager
 
-The vote manager creates voting rounds by submitting
-transactions with a `MsgCreateVotingSession`. Only the vote manager
-role can publish new rounds.
+The vote manager is the only account authorized to initialize the
+chain's voting round (see [Poll Creation]).
 
 The vote manager address is set in the genesis block (see
 [Genesis Validator Setup]). The current vote manager MAY transfer
@@ -404,25 +403,25 @@ Selecting the snapshot triggers:
 
 ### Poll Creation
 
-The vote manager publishes a new round via `MsgCreateVotingSession` with
-the following parameters:
+The vote manager initializes the chain's voting round by submitting
+a transaction carrying the client-supplied subset of the `VoteRound`
+structure specified in `draft-valargroup-shielded-voting-wallet-api`
+[^draft-wallet-api]. The vote manager supplies `snapshot_height`,
+`snapshot_blockhash`, `proposals_hash`, `vote_end_time`,
+`nullifier_imt_root`, `nc_root`, `proposals`, `title`, and
+`description`; the transaction's signer becomes the `creator` field
+of the resulting `VoteRound`. The chain derives the remaining
+fields (`vote_round_id`, `status`, `ea_pk`, `created_at_height`)
+at inclusion or during the round lifecycle.
 
-- `snapshot_height`: the selected Zcash mainnet block height.
-- `snapshot_blockhash`: the block hash at `snapshot_height`.
-- `proposals`: 1 to 15 proposals, each with 2 to 8 labeled options (e.g.,
-  "Support" / "Oppose"). The limit is 15 because the circuit's
-  proposal authority bitmask reserves bit 0 as a sentinel.
-- `vote_end_time`: deadline for all voting phases.
-- `nullifier_imt_root`: root of the nullifier non-membership tree at
-  snapshot.
-- `nc_root`: Orchard note commitment tree root at snapshot.
-- `verification_keys`: verification keys for the ZKP circuits (delegation,
-  vote, share reveal).
+The chain rejects the transaction if the signer is not the current
+vote manager, or if the `proposals` field violates the constraints
+in [Proposals and Decisions].
 
-The vote round ID is a Poseidon hash of the round parameters
-(snapshot height, block hash, proposals, end time, nullifier IMT root,
-note commitment root). It is a Pallas field element because it enters
-ZKP circuits as a public input.
+The vote chain derives the 32-byte `vote_round_id` from the
+transaction fields after inclusion. The construction uses Poseidon
+hashing and produces a Pallas field element so that the round ID
+can enter ZKP circuits as a public input.
 
 The round enters the **PENDING** state. The EA key ceremony (see
 `draft-valargroup-ea-key-ceremony` [^draft-ceremony]) runs
@@ -537,6 +536,8 @@ manager is to spin up a new chain.
 [^draft-pir]: [Draft ZIP: Private Information Retrieval for Nullifier Exclusion Proofs](draft-valargroup-nullifier-pir.md)
 
 [^draft-submission-server]: [Draft ZIP: Vote Share Submission Server](draft-valargroup-submission-server.md)
+
+[^draft-wallet-api]: [Draft ZIP: Shielded Voting Wallet API](draft-valargroup-shielded-voting-wallet-api.md)
 
 [^draft-submission-server-lmb]: [Draft ZIP: Vote Share Submission Server, Section: Last-Moment Buffer](draft-valargroup-submission-server.md#last-moment-buffer)
 
