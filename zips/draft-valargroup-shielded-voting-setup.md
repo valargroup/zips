@@ -334,10 +334,18 @@ script that requires no local clone of the repository. The script:
    in the admin UI).
 6. Waits for the bootstrap operator to approve and fund the validator
    via the admin UI.
-7. On receiving funds, auto-registers on-chain with
-   `MsgCreateValidatorWithPallasKey`.
+7. On receiving funds, registers on-chain by submitting a single
+   transaction that wraps a standard Cosmos staking validator
+   creation message together with the validator's Pallas public
+   key, atomically binding the key to the new validator.
 
 The funding amount equals the validator's consensus voting power.
+The vote chain rejects raw Cosmos staking validator creation
+messages: every validator MUST be registered through the wrapped
+form so that a Pallas public key is bound at creation time. A
+validator without a registered Pallas key is bonded for consensus
+but cannot participate in the EA ceremony (see [Validator]).
+
 Developers with a local clone can alternatively run
 `mise run validator:join`, which builds from source and then runs the
 same `join.sh` flow.
