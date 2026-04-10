@@ -75,8 +75,8 @@ For definitions of cryptographic terms including *alternate nullifier*,
 *nullifier non-membership tree*, *nullifier domain*, *pool snapshot*, and
 *claim*, see the Orchard Proof-of-Balance ZIP [^draft-balance-proof]. For
 EA key ceremony terms, see `draft-valargroup-ea-key-ceremony`
-[^draft-ceremony]. For PIR-related terms, see `draft-valargroup-gov-pir`
-[^draft-pir].
+[^draft-ceremony]. For PIR-related terms, see
+`draft-valargroup-nullifier-pir` [^draft-pir].
 
 
 # Abstract
@@ -234,7 +234,7 @@ A complete deployment consists of:
   from chain consensus; see `draft-valargroup-submission-server`
   [^draft-submission-server].
 - **Nullifier service** — a PIR server that provides private nullifier
-  exclusion proofs to voters (see [Nullifier Service (PIR Server)]).
+  exclusion proofs to voters (see [Nullifier Service]).
 - **Vote configuration document** — a per-round document published
   by the vote manager that lists the network endpoints of the vote
   chain nodes and nullifier service operators participating in the
@@ -404,23 +404,40 @@ steps. The script is parameterized by the vote configuration
 document URL; the same script is used for any poll and is not
 specialized per poll.
 
-### Nullifier Service (PIR Server)
+### Nullifier Service
 
-The nullifier service provides nullifier exclusion proofs to voters via
-PIR.
+The nullifier service is an external service that lets voters
+privately verify that their Orchard nullifiers are absent from
+the Zcash mainnet nullifier set at the snapshot height, using
+private information retrieval. A voter's PIR query reveals
+neither which nullifier is being checked nor the answer to any
+observer of the network.
 
-The service pipeline:
+The service is run by a nullifier service operator (see
+[Nullifier Service Operator]) using the implementation referenced
+in [Reference implementation]. The PIR construction and database
+layout are specified in `draft-valargroup-nullifier-pir`
+[^draft-pir].
 
-1. **Ingest**: fetch Orchard nullifiers from Zcash mainnet via a
-   lightwallet server (`lightwalletd`), or download a pre-built snapshot.
-2. **Export**: build the nullifier non-membership tree (Indexed Merkle
-   Tree as specified in `draft-valargroup-orchard-balance-proof`
-   [^draft-balance-proof]) and export the three-tier PIR database as
-   specified in `draft-valargroup-gov-pir` [^draft-pir]. The exported
-   files allow the server to restart without rebuilding the tree from
-   raw nullifiers.
-3. **Serve**: expose a query endpoint for voters to privately retrieve
-   exclusion proofs.
+The service operates as a three-stage pipeline:
+
+1. **Ingest**: fetch the Zcash mainnet nullifier set up to the
+   chosen snapshot height from a Zcash node and persist it to
+   local storage.
+2. **Export**: build the nullifier non-membership tree (an Indexed
+   Merkle Tree as specified in
+   `draft-valargroup-orchard-balance-proof` [^draft-balance-proof])
+   and export the PIR database tiers as specified in
+   `draft-valargroup-nullifier-pir` [^draft-pir]. The exported
+   files allow the server to restart without rebuilding the tree
+   from raw nullifiers.
+3. **Serve**: accept PIR queries from voters and return encrypted
+   responses over HTTP. The operator publishes the service URL by
+   adding it to the vote configuration document (see
+   [Vote Configuration Publication]).
+
+The PIR client-server query and response wire format is not yet
+specified in any normative document. See [Open Issues].
 
 ### Vote Configuration Publication
 
@@ -595,6 +612,13 @@ manager is to spin up a new chain.
 - **Role consolidation**: evaluate whether the bootstrap operator and
   vote manager concepts (already the same keypair at genesis; see
   [Bootstrap Operator]) merit separate treatment in the specification.
+- **PIR client-server wire format**: the query and response wire
+  format used between wallet clients and the nullifier service
+  (see [Nullifier Service]) is not currently specified in any
+  ZIP. The PIR draft scopes its outer transport out of remit, and
+  the wallet API ZIP describes only the endpoint URLs. A normative
+  spec home is needed before wallet clients and nullifier service
+  servers from independent implementations can interoperate.
 
 
 # References
