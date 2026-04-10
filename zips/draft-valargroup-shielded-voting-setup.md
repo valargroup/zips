@@ -286,8 +286,8 @@ tally computation. Each validator maintains three keypairs:
 - **Account keypair**: used for submitting chain transactions.
 - **Pallas keypair**: used for ECIES key exchange during the EA ceremony.
 
-Validators join the network via the automated `join.sh` [^join-sh]
-script or by building from source. See [Onboarding Validators].
+Validators join the network by following the flow described in
+[Onboarding Validators].
 
 Each validator additionally runs the submission server bundled
 into the `svoted` binary, which receives encrypted vote share
@@ -324,43 +324,61 @@ the network. See [Vote Configuration Publication].
 
 ### Onboarding Validators
 
-New validators join through `join.sh` [^join-sh], a self-contained
-script that requires no local clone of the repository. The script:
+A new validator joins the vote chain by following these steps:
 
-1. Downloads pre-built `svoted` and `create-val-tx` binaries and
-   verifies their SHA-256 checksums.
-2. Reads the published vote configuration document (see
-   [Vote Configuration Publication]) to discover an active validator
-   and fetch genesis.
-3. Initializes a local node and syncs to the current height.
-4. Generates consensus, account, and Pallas keypairs.
-5. Proposes an update to the vote configuration document adding
-   the new validator's public URL.
-6. Waits for the vote manager to apply the update and to fund the
-   validator's account.
-7. On receiving funds, registers on-chain by submitting a single
-   transaction that wraps a standard Cosmos staking validator
-   creation message together with the validator's Pallas public
-   key, atomically binding the key to the new validator.
+1. **Acquire the vote chain binary.** Obtain `svoted` either from
+   a published release of the reference implementation (see
+   [Reference implementation]) or by building from source. Binary
+   releases MUST be verified against a published checksum before
+   use.
 
-The funding amount equals the validator's consensus voting power.
-The vote chain rejects raw Cosmos staking validator creation
-messages: every validator MUST be registered through the wrapped
-form so that a Pallas public key is bound at creation time. A
-validator without a registered Pallas key is bonded for consensus
-but cannot participate in the EA ceremony (see [Validator]).
+2. **Discover the network and initialize.** Read the vote
+   configuration document for the target poll (see
+   [Vote Configuration Publication]) to find at least one active
+   validator. Fetch the chain's genesis block from that validator
+   and initialize a local node directory.
 
-Developers with a local clone can alternatively run
-`mise run validator:join`, which builds from source and then runs the
-same `join.sh` flow.
+3. **Generate keypairs.** Generate the validator's consensus
+   keypair, account keypair, and Pallas keypair (see [Validator]).
+
+4. **Sync the chain.** Start the node, connect to the active
+   validators listed in the vote configuration document via
+   CometBFT peer-exchange, and sync to the current height.
+
+5. **Register in the vote configuration document.** Propose an
+   update to the document adding the new validator's public URL.
+
+6. **Wait for funding.** The vote manager reviews the proposed
+   update, applies it, and funds the new validator's account via
+   an authorized transfer (see [Bootstrap Operator] for the
+   funding mechanism).
+
+7. **Register on-chain.** Once funds are received, submit the
+   validator registration transaction that wraps a standard
+   Cosmos staking validator creation message together with the
+   validator's Pallas public key, atomically binding the key to
+   the new validator.
+
+The amount transferred at step 6 determines the new validator's
+consensus voting power. The vote chain rejects raw Cosmos staking
+validator creation messages: every validator MUST be registered
+through the wrapped form so that a Pallas public key is bound at
+creation time. A validator without a registered Pallas key is
+bonded for consensus but cannot participate in the EA ceremony
+(see [Validator]).
+
+The reference implementation (see [Reference implementation])
+includes an automated `join.sh` script that performs the above
+steps. The script is parameterized by the vote configuration
+document URL; the same script is used for any poll and is not
+specialized per poll.
 
 ### Nullifier Service (PIR Server)
 
 The nullifier service provides nullifier exclusion proofs to voters via
 PIR.
 
-The service pipeline (each step has a corresponding
-`mise run nullifier:<step>` task):
+The service pipeline:
 
 1. **Ingest**: fetch Orchard nullifiers from Zcash mainnet via a
    lightwallet server (`lightwalletd`), or download a pre-built snapshot.
@@ -571,8 +589,6 @@ manager is to spin up a new chain.
 [^draft-submission-server-lmb]: [Draft ZIP: Vote Share Submission Server, Section: Last-Moment Buffer](draft-valargroup-submission-server.md#last-moment-buffer)
 
 [^draft-onchain-voting]: [Draft ZIP: On-chain Accountable Voting](draft-ecc-onchain-accountable-voting.md)
-
-[^join-sh]: [join.sh — validator join script](https://gist.github.com/greg0x/71bec808fbd02a7ef2a29b4386b8d842)
 
 [^cosmos-staking]: [Cosmos SDK `x/staking` module documentation](https://docs.cosmos.network/main/build/modules/staking)
 
