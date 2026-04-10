@@ -50,6 +50,12 @@ Bonded validator
   `x/staking` module [^cosmos-staking]: its delegation is committed,
   it participates in consensus, and it is eligible to produce blocks.
 
+Submission server
+: An untrusted service that accepts encrypted vote share payloads
+  from voters and submits the corresponding share reveal
+  transactions to the vote chain. Specified in
+  `draft-valargroup-submission-server` [^draft-submission-server].
+
 Election Authority (EA)
 : A virtual signing key, jointly constructed by validators during a key
   ceremony so that no single party holds the private key. Used to encrypt
@@ -216,10 +222,13 @@ delegation, vote, and share reveal. The proof circuits are specified in
 A complete deployment consists of:
 
 - **Vote chain nodes** — one or more `svoted` instances running CometBFT
-  consensus. Each node embeds a helper server that accepts vote share
-  payloads from clients and submits the corresponding share reveal
-  transactions at client-specified times (see
-  `draft-valargroup-submission-server` [^draft-submission-server]).
+  consensus. Each `svoted` binary additionally includes the
+  **submission server** (an untrusted service that accepts vote
+  share payloads from clients and submits the corresponding share
+  reveal transactions at client-specified times). The submission
+  server shares the node's process but is functionally decoupled
+  from chain consensus; see `draft-valargroup-submission-server`
+  [^draft-submission-server].
 - **Nullifier service** — a PIR server that provides private nullifier
   exclusion proofs to voters (see [Nullifier Service (PIR Server)]).
 - **Service discovery API** — a centralized bootstrap directory that
