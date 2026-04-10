@@ -235,11 +235,12 @@ A complete deployment consists of:
   [^draft-submission-server].
 - **Nullifier service** — a PIR server that provides private nullifier
   exclusion proofs to voters (see [Nullifier Service (PIR Server)]).
-- **Service discovery API** — a centralized bootstrap directory that
-  wallet clients and joining validators query to discover vote chain and
-  PIR server endpoints (see [Service Discovery]).
-- **Admin interface** — a management UI for approving pending validator
-  registrations and configuring service discovery endpoints.
+- **Vote configuration document** — a per-round document published
+  by the vote manager that lists the network endpoints of the vote
+  chain nodes and nullifier service operators participating in the
+  round. The document format and distribution rules are specified
+  in `draft-valargroup-shielded-voting-wallet-api`
+  [^draft-wallet-api]; see also [Vote Configuration Publication].
 
 ## Roles
 
@@ -316,9 +317,10 @@ Initialization generates a Cosmos validator key, a Pallas keypair for the
 EA ceremony, and a genesis block with the chain ID `svote-1`. The node
 exposes the standard CometBFT P2P, RPC, and Cosmos SDK REST endpoints.
 
-After the chain is producing blocks, the bootstrap operator registers the
-node's public URL in the service discovery layer (see [Service Discovery])
-so that joining validators and wallet clients can find the network.
+After the chain is producing blocks, the bootstrap operator publishes
+the initial vote configuration document listing the genesis node's
+public URL, so that joining validators and wallet clients can find
+the network. See [Vote Configuration Publication].
 
 ### Onboarding Validators
 
@@ -327,13 +329,15 @@ script that requires no local clone of the repository. The script:
 
 1. Downloads pre-built `svoted` and `create-val-tx` binaries and
    verifies their SHA-256 checksums.
-2. Discovers a live validator via the service discovery API.
-3. Fetches genesis and syncs to the current height.
+2. Reads the published vote configuration document (see
+   [Vote Configuration Publication]) to discover an active validator
+   and fetch genesis.
+3. Initializes a local node and syncs to the current height.
 4. Generates consensus, account, and Pallas keypairs.
-5. Self-registers with the service discovery API (appears as "pending"
-   in the admin UI).
-6. Waits for the bootstrap operator to approve and fund the validator
-   via the admin UI.
+5. Proposes an update to the vote configuration document adding
+   the new validator's public URL.
+6. Waits for the vote manager to apply the update and to fund the
+   validator's account.
 7. On receiving funds, registers on-chain by submitting a single
    transaction that wraps a standard Cosmos staking validator
    creation message together with the validator's Pallas public
@@ -369,28 +373,33 @@ The service pipeline (each step has a corresponding
 3. **Serve**: expose a query endpoint for voters to privately retrieve
    exclusion proofs.
 
-### Service Discovery
+### Vote Configuration Publication
 
-The service discovery API is a centralized bootstrap directory that
-serves as the entry point for both validator onboarding and wallet
-client integration. It exposes a `/api/voting-config` endpoint that
-returns:
+The vote manager publishes a vote configuration document for the
+chain's voting round, in the format and via the publication
+channel described in `draft-valargroup-shielded-voting-wallet-api`
+[^draft-wallet-api]. Wallets and joining validators fetch the
+document from that channel; the vote chain itself does not
+provide a service-discovery endpoint.
 
-- **Vote chain endpoints** — REST API URLs for active validators.
-- **PIR server endpoints** — URLs for nullifier exclusion proof queries.
+The vote manager publishes the initial document once the genesis
+validator is producing blocks. New validators and nullifier service
+operators are added by proposing updates to the document, which the
+vote manager reviews and applies; for validators this proposal is
+automated by the join.sh flow described in [Onboarding Validators],
+while nullifier service operators propose their entries directly.
+The document is incremental — new entries are added without
+removing earlier ones — and any active entry can serve as an entry
+point for new joiners; there is no distinguished seed node.
 
-Joining validators query this API to discover a seed node, fetch its
-CometBFT P2P identity and genesis, and connect. Once connected,
-CometBFT's peer exchange (PEX) protocol handles discovery of
-additional peers — the API is only needed for initial bootstrap.
-
-Wallet clients query the same API to discover vote chain and PIR
-server endpoints for voter-facing operations.
-
-New validators register themselves with the API after joining. The
-bootstrap operator approves pending registrations through an admin
-interface, after which the validator appears in the published
-endpoint list.
+Each voting round runs on its own vote chain with its own
+publication channel. The vote manager announces the channel URL
+out-of-band before the round opens, so that wallet implementers
+can configure their wallets to fetch from it — either as a
+bundled default or as a user-supplied setting. There is no
+automated cross-poll discovery; a new poll requires the vote
+manager to communicate the new channel to wallets and end users
+through whatever distribution path they choose.
 
 ## Conducting a Voting Round
 
@@ -524,6 +533,14 @@ forge votes, and the worst-case mitigation for a compromised vote
 manager is to spin up a new chain.
 
 
+# Reference implementation
+
+- [^ref-vote-sdk] — Cosmos SDK vote chain (`svoted`) implementing
+  the chain-side state, ceremony, tally, and submission server.
+- [^ref-nullifier-pir] — PIR server and client for privately
+  retrieving nullifier non-membership proofs.
+
+
 # Open Issues
 
 - **Role consolidation**: evaluate whether the bootstrap operator and
@@ -558,3 +575,7 @@ manager is to spin up a new chain.
 [^join-sh]: [join.sh — validator join script](https://gist.github.com/greg0x/71bec808fbd02a7ef2a29b4386b8d842)
 
 [^cosmos-staking]: [Cosmos SDK `x/staking` module documentation](https://docs.cosmos.network/main/build/modules/staking)
+
+[^ref-vote-sdk]: [valargroup/vote-sdk: Cosmos SDK vote chain for shielded voting](https://github.com/valargroup/vote-sdk)
+
+[^ref-nullifier-pir]: [valargroup/vote-nullifier-pir: PIR system for nullifier non-membership proofs](https://github.com/valargroup/vote-nullifier-pir)
