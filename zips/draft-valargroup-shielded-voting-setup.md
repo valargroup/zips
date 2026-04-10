@@ -555,14 +555,6 @@ last-moment buffer for submission timing, as specified in the
 4. **FINALIZED**: tally published and verifiable. A round that
    auto-finalized due to a TALLYING timeout publishes no tally.
 
-### Timing Parameters
-
-| Parameter                      | Value        | Notes                         |
-| ------------------------------ | ------------ | ----------------------------- |
-| EA ceremony timing             |              | See [^draft-ceremony]         |
-| Voting window                  | Configurable | Set by `vote_end_time`        |
-| Tally computation              | Automatic    | Triggered after window closes |
-
 ## Verification and Auditing
 
 The vote chain is publicly readable. Any party running a full node
