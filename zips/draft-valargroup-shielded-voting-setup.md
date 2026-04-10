@@ -309,18 +309,49 @@ and HTTP query endpoint. Specified in
 
 ### Genesis Validator Setup
 
-The bootstrap operator builds the vote chain binary (Go + Rust FFI for
-Halo 2 and RedPallas verification), initializes a single-validator chain,
-and starts the node.
+The bootstrap operator obtains the vote chain binary `svoted`
+either from a published release of the reference implementation
+(see [Reference implementation]) or by building from source, and
+initializes a new single-validator chain for the voting round.
 
-Initialization generates a Cosmos validator key, a Pallas keypair for the
-EA ceremony, and a genesis block with the chain ID `svote-1`. The node
-exposes the standard CometBFT P2P, RPC, and Cosmos SDK REST endpoints.
+Initialization proceeds as follows:
 
-After the chain is producing blocks, the bootstrap operator publishes
-the initial vote configuration document listing the genesis node's
-public URL, so that joining validators and wallet clients can find
-the network. See [Vote Configuration Publication].
+1. **Choose a chain identifier.** Each voting round uses its own
+   chain identifier so that transactions signed for one round
+   cannot be misinterpreted by software configured for another
+   round.
+
+2. **Generate the bootstrap operator's keypairs.** Generate a
+   CometBFT consensus keypair, a Cosmos account keypair, and a
+   Pallas keypair (see [Validator] for the role of each).
+
+3. **Construct the genesis block.** Populate the genesis state
+   with:
+   - The chain identifier from step 1.
+   - The vote manager singleton, set to an address controlled by
+     the bootstrap operator (see [Bootstrap Operator]).
+   - An initial balance for the vote manager account, in the
+     chain's native token (`usvote`), sized to fund the planned
+     validator set via subsequent authorized transfers.
+   - A minimum ceremony validator count required before the EA
+     key ceremony can proceed.
+   - The bootstrap operator's own validator entry, bonded with
+     consensus voting power and with its Pallas public key
+     registered.
+   - The standard Cosmos SDK module states (auth, bank, staking)
+     as required by the Cosmos SDK runtime.
+
+4. **Start the node.** Starting `svoted` begins block production
+   and the chain transitions out of the genesis state.
+
+The genesis state does not pre-populate voting rounds, nullifier
+sets, tally results, or PIR data; these are all populated through
+subsequent on-chain transactions during the voting round.
+
+After the chain is producing blocks, the bootstrap operator
+publishes the initial vote configuration document listing the
+genesis node's public URL, so that joining validators and wallet
+clients can find the network. See [Vote Configuration Publication].
 
 ### Onboarding Validators
 
