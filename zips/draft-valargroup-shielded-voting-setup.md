@@ -136,6 +136,9 @@ chain, operator roles, and voting round lifecycle.
 
 - A new poll runner can set up infrastructure and conduct a voting round
   by following this specification and the referenced companion ZIPs.
+- A Zcash coinholder with eligible Orchard funds at the round's
+  snapshot height can participate in the voting round using a
+  conforming wallet client.
 - The vote chain operates as a public, verifiable ledger — anyone can run
   a monitoring node to audit.
 - The system operates with partial validator availability.
@@ -555,6 +558,73 @@ last-moment buffer for submission timing, as specified in the
 4. **FINALIZED**: tally published and verifiable. A round that
    auto-finalized due to a TALLYING timeout publishes no tally.
 
+## Coinholder Participation
+
+For a Zcash coinholder to participate in a voting round, they
+must satisfy an eligibility precondition and follow a wallet-
+driven participation flow. The protocol details for each step
+are specified in companion ZIPs; this section ties them together
+from the coinholder's perspective.
+
+### Eligibility
+
+Voting weight derives from the value held in a coinholder's
+Orchard notes at the round's snapshot height (see
+[Snapshot Configuration]). Funds held in Sapling or transparent
+pools at the snapshot height carry no voting weight; coinholders
+who wish to participate with such funds MUST migrate them to
+Orchard before the snapshot height.
+
+### Wallet Setup
+
+A wallet client obtains the vote configuration document for the
+round (see [Vote Configuration Publication]), which lists the
+vote chain endpoints, the nullifier service endpoints, and the
+protocol versions in use. The configuration document schema and
+the wallet-side validation rules are specified in
+`draft-valargroup-shielded-voting-wallet-api`
+[^draft-wallet-api].
+
+### Participation Flow
+
+For each Orchard note the coinholder uses as voting weight, the
+wallet performs:
+
+1. **Retrieve a non-membership proof.** Query a nullifier service
+   endpoint to retrieve a Merkle non-membership proof for the
+   note's alternate nullifier against the snapshot's
+   `nullifier_imt_root`, as specified in
+   `draft-valargroup-nullifier-pir` [^draft-pir].
+
+2. **Submit a delegation transaction.** Construct a Delegation
+   Proof asserting ownership of the eligible note without
+   revealing which note it is, and submit the transaction to a
+   vote chain endpoint listed in the vote configuration document.
+   This produces a Vote Authority Note (VAN) on the vote
+   commitment tree. The proof construction and the on-chain
+   handling are specified in the Delegation Phase of
+   `draft-valargroup-shielded-voting` [^draft-voting-protocol].
+
+For each proposal the coinholder votes on, the wallet performs:
+
+3. **Submit a vote transaction.** Construct a Vote Proof
+   consuming the current VAN and producing a new VAN with the
+   relevant proposal authority bit cleared, plus a Vote
+   Commitment binding the chosen option, as specified in the
+   Vote Phase of `draft-valargroup-shielded-voting`
+   [^draft-voting-protocol].
+
+4. **Submit encrypted vote shares.** Send the share payloads to
+   submission server endpoints, which queue them and submit
+   share reveal transactions on the coinholder's behalf at
+   client-specified times. Share decomposition, server selection,
+   and the last-moment buffer rules are specified in
+   `draft-valargroup-submission-server`
+   [^draft-submission-server].
+
+After `vote_end_time`, the coinholder may verify the final tally
+following [Verification and Auditing].
+
 ## Verification and Auditing
 
 The vote chain is publicly readable. Any party running a full
@@ -628,8 +698,8 @@ are not designed for interactive multi-phase voting protocols.
 **Orchard-only snapshots**: the voting protocol is built on Orchard's
 circuit-friendly primitives (Poseidon hashing, Pallas curve). Sapling
 and transparent pools use incompatible cryptographic constructions.
-Coinholders who wish to participate can migrate funds to Orchard before
-the snapshot.
+The corresponding requirement on coinholders is stated in
+[Eligibility].
 
 **Cosmos SDK**: provides a mature BFT consensus engine (CometBFT),
 validator lifecycle management (bonding, jailing for missed blocks or
