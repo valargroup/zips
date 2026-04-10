@@ -471,18 +471,39 @@ through whatever distribution path they choose.
 
 ### Snapshot Configuration
 
-The poll runner selects a Zcash mainnet snapshot height subject to these
-constraints:
+A voting round is anchored to a Zcash mainnet snapshot: a specific
+mainnet block height at which the eligible Orchard pool is
+captured. The poll runner chooses this snapshot height subject
+to the following constraint:
 
-- The height MUST be at or after NU5 activation (Orchard is required).
+- The height MUST be at or after NU5 activation, since the
+  protocol requires Orchard.
 
-Selecting the snapshot triggers:
+Choosing the snapshot height is the start of round setup, not a
+single automatic action. The poll runner is responsible for the
+following coordinated activities:
 
-1. The PIR server rebuilds its nullifier non-membership tree at that
-   height.
-2. The note commitment tree root ($\mathsf{nc\_root}$) and nullifier IMT
-   root ($\mathsf{nullifier\_imt\_root}$) are captured at the snapshot
-   height.
+1. **Determine the snapshot's commitment values.** Compute the
+   Orchard note commitment tree root ($\mathsf{nc}\_\mathsf{root}$)
+   and the nullifier non-membership Indexed Merkle Tree root
+   ($\mathsf{nullifier}\_\mathsf{imt}\_\mathsf{root}$) at the
+   chosen height. These values are deterministic given the
+   height; they are derived from Zcash mainnet state.
+
+2. **Ensure the nullifier service has the snapshot's PIR
+   database.** The poll runner coordinates with each nullifier
+   service operator (see [Nullifier Service Operator]) so that
+   their ingest and export pipelines (see [Nullifier Service])
+   have run to the chosen height before the round opens, so
+   wallets can query exclusion proofs against that snapshot.
+
+3. **Use the values during chain bootstrap.**
+   $\mathsf{nc}\_\mathsf{root}$ and
+   $\mathsf{nullifier}\_\mathsf{imt}\_\mathsf{root}$ are passed
+   into the genesis state (see [Genesis Validator Setup]) and
+   into the voting round initialization transaction (see
+   [Poll Creation]) so that on-chain verifiers and wallet
+   clients use them as ZKP public inputs.
 
 ### Poll Creation
 
@@ -524,10 +545,15 @@ last-moment buffer for submission timing, as specified in the
 2. **ACTIVE**: ceremony complete, voting window open. Voters may delegate,
    vote, and submit shares (see `draft-valargroup-voting-protocol`
    [^draft-voting-protocol]).
-3. **TALLYING**: `vote_end_time` has passed. Tally decryption runs
-   automatically (see `draft-valargroup-ea-key-ceremony`
-   [^draft-ceremony]).
-4. **FINALIZED**: tally published and verifiable.
+3. **TALLYING**: `vote_end_time` has passed. Validators submit
+   partial decryptions, the chain combines them, and tally
+   decryption runs automatically (see
+   `draft-valargroup-ea-key-ceremony` [^draft-ceremony]). The
+   chain enforces a bounded timeout on the TALLYING state: if a
+   tally is not submitted within this timeout, the round
+   auto-finalizes with no tally, preserving liveness.
+4. **FINALIZED**: tally published and verifiable. A round that
+   auto-finalized due to a TALLYING timeout publishes no tally.
 
 ### Timing Parameters
 
