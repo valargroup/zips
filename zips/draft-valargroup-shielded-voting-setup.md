@@ -13,9 +13,9 @@
 
 # Terminology
 
-The key words "MUST", "REQUIRED", "MUST NOT", "SHOULD", and "MAY" in this
-document are to be interpreted as described in BCP 14 [^BCP14] when, and
-only when, they appear in all capitals.
+The key words "MUST" and "MAY" in this document are to be
+interpreted as described in BCP 14 [^BCP14] when, and only when,
+they appear in all capitals.
 
 The terms below are to be interpreted as follows:
 
