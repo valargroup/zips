@@ -212,8 +212,6 @@ participate in the round.
 {
   "config_version": 1,
   "vote_round_id": "<hex, 64 characters>",
-  "title": "Round 1: Protocol Upgrade",
-  "description": "Vote on the proposed protocol upgrade.",
   "vote_servers": [
     {"url": "https://vote1.example.com", "label": "validator-1"}
   ],
@@ -248,8 +246,6 @@ participate in the round.
 | ---------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `config_version`                   | integer          | Schema version of this configuration document. Currently 1.                                                                    |
 | `vote_round_id`                    | string           | Hex-encoded 32-byte vote round identifier (64 characters, lowercase).                                                          |
-| `title`                            | string           | Short human-readable title for the vote round.                                                                                 |
-| `description`                      | string           | Human-readable description of the vote round.                                                                                  |
 | `vote_servers`                     | array            | One or more vote server base URLs serving both chain and helper endpoints. Each entry has `url` (string) and `label` (string). |
 | `pir_endpoints`                    | array            | One or more nullifier PIR server base URLs. Each entry has `url` and `label`.                                                  |
 | `snapshot_height`                  | integer          | Zcash block height at which the Orchard pool snapshot was taken.                                                               |
