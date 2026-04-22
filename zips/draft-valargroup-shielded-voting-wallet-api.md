@@ -224,6 +224,7 @@ participate in the round.
     {
       "id": 1,
       "title": "Approve protocol upgrade",
+      "description": "Approve or oppose the proposed protocol upgrade.",
       "options": [
         {"index": 0, "label": "Support"},
         {"index": 1, "label": "Oppose"}
@@ -250,7 +251,7 @@ participate in the round.
 | `pir_endpoints`                    | array            | One or more nullifier PIR server base URLs. Each entry has `url` and `label`.                                                  |
 | `snapshot_height`                  | integer          | Zcash block height at which the Orchard pool snapshot was taken.                                                               |
 | `vote_end_time`                    | integer          | Unix timestamp (seconds) after which votes are no longer accepted.                                                             |
-| `proposals`                        | array            | Ordered list of proposals. Each has `id` (integer, 1-indexed), `title` (string), and `options` (array of `{index, label}`).    |
+| `proposals`                        | array            | Ordered list of proposals. Each has `id` (integer, 1-indexed), `title` (string), `description` (string), and `options` (array of `{index, label}`). |
 | `supported_versions.pir`           | array of strings | PIR retrieval scheme versions supported by the servers (e.g., `["v0", "v1"]`).                                                 |
 | `supported_versions.vote_protocol` | string           | Vote protocol version covering the ZKP circuits and commitment tree structure (e.g., `"v0"`).                                  |
 | `supported_versions.tally`         | string           | Tally method version covering threshold decryption and result aggregation (e.g., `"v0"`).                                      |
@@ -343,16 +344,22 @@ The `proposals_hash` is SHA-256 over the canonical JSON serialization
 of the `proposals` array, allowing wallets to verify that the
 proposals shown to the user match those on the vote chain.
 
-To compute: construct a JSON array of proposal objects containing only
-`id`, `title`, and `options` (each with `index`, `label`), ordered by
-`id` then `index` ascending, with object keys in the order listed.
-Serialize with no whitespace and SHA-256 the UTF-8 result.
+To compute: construct a JSON array of proposal objects containing
+`id`, `title`, `description`, and `options` (each with `index`, `label`),
+ordered by `id` then `index` ascending, with object keys in the order
+listed. Serialize with no whitespace and SHA-256 the UTF-8 result. The
+JSON serialization MUST NOT escape the forward slash character (`/`);
+non-ASCII characters are emitted as UTF-8 bytes, not as `\uXXXX`
+escapes. Control characters (U+0000 through U+001F) are escaped per
+RFC 8259 (`\b`, `\f`, `\n`, `\r`, `\t`, or `\u00XX`).
 
 Example preimage (from [Vote Configuration Format]):
 
 ```
-[{"id":1,"title":"Approve protocol upgrade","options":[{"index":0,"label":"Support"},{"index":1,"label":"Oppose"}]}]
+[{"id":1,"title":"Approve protocol upgrade","description":"Approve or oppose the proposed protocol upgrade.","options":[{"index":0,"label":"Support"},{"index":1,"label":"Oppose"}]}]
 ```
+
+SHA-256 of the above preimage: `3f9a361d43c4ddb77ad138a091374e2e2958718e64937f33df99a09bd567e63d`.
 
 Wallets SHOULD verify `proposals_hash` against the vote
 configuration before proceeding.
