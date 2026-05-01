@@ -123,29 +123,39 @@ See [Version Handling] for the normative rules.
 
 ## Discovery and Validation
 
-1. **Obtain vote configuration.** Fetch or receive the vote
-   configuration JSON document for the round.
-   See [Vote Configuration Format].
+1. **Obtain dynamic configuration.** Fetch the dynamic configuration
+   JSON document from the URL declared by the wallet's bundled static
+   configuration. The dynamic configuration carries the operational
+   endpoints and a registry of authenticated rounds keyed by
+   `vote_round_id`.
+   See [Static Configuration] and [Dynamic Configuration].
 
-2. **Validate configuration.** Check all fields against the rules in
-   [Validation Rules] and verify version compatibility per
-   [Compatibility Rules]. Reject the configuration and stop if any
-   check fails.
+2. **Validate dynamic configuration wrapper.** Check the wrapper
+   fields (`config_version`, `vote_servers`, `pir_endpoints`,
+   `supported_versions`) per [Wrapper Validation Rules] and verify
+   version compatibility per [Version Handling]. Reject the
+   configuration and stop if any check fails.
 
 3. **Fetch active round from chain.** Query `GET /shielded-vote/v1/rounds/active`
    to confirm the round is ACTIVE and retrieve on-chain parameters:
-   `ea_pk`, `nullifier_imt_root`, `nc_root`, and `proposals_hash`.
+   `ea_pk`, `nullifier_imt_root`, `nc_root`, and `proposals`.
    See [Active Round].
 
-4. **Verify proposals hash.** Compute the proposals hash from the
-   configuration's `proposals` array and compare it to `proposals_hash`
-   from the chain response. See [Proposals Hash].
+4. **Authenticate round and bind to chain.** Look up the active
+   round's `vote_round_id` in `rounds`. Verify the entry's signatures
+   per [Signature Verification], then confirm the active round's
+   `ea_pk` is byte-equal to the entry's `ea_pk`. Together these bind
+   the configuration's authenticated EA public key to the chain state
+   returned by the (otherwise unauthenticated) vote server.
+   See [Per-Round Authentication]. Wallets display proposals from the
+   active round response.
 
 ## Delegation
 
 5. **Retrieve nullifier exclusion proofs.** Connect to a
    `pir_endpoints` server and retrieve Merkle non-membership proofs
-   for the wallet's Orchard note nullifiers at `snapshot_height`.
+   for the wallet's Orchard note nullifiers at the active round's
+   `snapshot_height`.
    See [Nullifier Retrieval] and [^nullifier-pir].
 
 6. **Construct and submit delegation transaction.** Build the ZKP1
@@ -202,95 +212,237 @@ new one, so proposals cannot be voted on in parallel.
 
 ## Vote Discovery
 
-A vote configuration is a JSON document published for each vote round.
-It contains all parameters a wallet needs to locate services and
-participate in the round.
+Vote configuration is split between two artifacts that together
+establish the wallet's trust anchor, operational endpoints, and
+authenticated set of rounds:
 
-### Vote Configuration Format
+- A **static configuration** bundled with each wallet release. It
+  carries the trusted admin public keys and the URL from which to
+  fetch the dynamic configuration. See [Static Configuration].
+- A **dynamic configuration** published by the round administrator.
+  It carries the vote server and PIR endpoints, and a registry of
+  authenticated rounds (`rounds`). Each entry in the registry binds a
+  `vote_round_id` to its election authority public key (`ea_pk`) and
+  carries one or more admin signatures attesting to that EA public
+  key. See [Dynamic Configuration].
+
+The wallet uses the static configuration to authenticate entries in
+the dynamic configuration's `rounds` registry, and uses each entry to
+bind the wallet's view of that specific round on chain. See
+[Wrapper Validation Rules] and [Per-Round Authentication] for the
+full check sequence.
+
+The `rounds` registry is append-only in spirit: publishers add a new
+entry when a round is created on chain and SHOULD NOT remove existing
+entries, so wallets can authenticate historical rounds for tally
+review and audit. The registry naturally supports multiple concurrent
+authenticated rounds.
+
+### Static Configuration
+
+The static configuration is bundled with the wallet release. Wallet
+implementations MAY embed it as a compiled-in literal, a resource file
+in the application bundle, or any other release-time mechanism whose
+integrity is guaranteed by the wallet's distribution channel (e.g., a
+platform-signed application binary).
+
+```json
+{
+  "static_config_version": 1,
+  "dynamic_config_url": "https://example.org/voting-config.json",
+  "trusted_keys": [
+    {
+      "key_id": "valar-2026-q2",
+      "alg": "ed25519",
+      "pubkey": "<base64, 32 bytes>"
+    }
+  ]
+}
+```
+
+#### Static Configuration Field Definitions
+
+
+| Field                         | Type    | Description                                                                                                              |
+| ----------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `static_config_version`       | integer | Schema version of the static configuration document. Currently 1.                                                        |
+| `dynamic_config_url`          | string  | HTTPS URL from which the wallet fetches the dynamic configuration document.                                              |
+| `trusted_keys`          | array   | Set of admin keys whose signatures the wallet will accept on the dynamic configuration. MUST contain at least one entry. |
+| `trusted_keys[].key_id` | string  | Stable identifier for the key. Referenced by `rounds[round_id].signatures[].key_id` in the dynamic configuration.        |
+| `trusted_keys[].alg`    | string  | Signature algorithm. This specification defines `"ed25519"`.                                                              |
+| `trusted_keys[].pubkey` | string  | Base64-encoded raw public key bytes. For `alg: "ed25519"`, exactly 32 bytes per RFC 8032 [^rfc8032].                     |
+
+
+### Dynamic Configuration
+
+The dynamic configuration is a JSON document containing the service
+discovery information and a registry of authenticated rounds. The
+publisher appends a new entry to the registry whenever a vote round is
+created on chain.
 
 ```json
 {
   "config_version": 1,
-  "vote_round_id": "<hex, 64 characters>",
   "vote_servers": [
     {"url": "https://vote1.example.com", "label": "validator-1"}
   ],
   "pir_endpoints": [
     {"url": "https://pir1.example.com", "label": "pir-1"}
   ],
-  "snapshot_height": 2800000,
-  "vote_end_time": 1735689600,
-  "proposals": [
-    {
-      "id": 1,
-      "title": "Approve protocol upgrade",
-      "description": "Approve or oppose the proposed protocol upgrade.",
-      "options": [
-        {"index": 0, "label": "Support"},
-        {"index": 1, "label": "Oppose"}
-      ]
-    }
-  ],
   "supported_versions": {
     "pir": ["v0", "v1"],
     "vote_protocol": "v0",
     "tally": "v0",
     "vote_server": "v1"
+  },
+  "rounds": {
+    "2771bf7f23f05ffee61d65b9fbd039b550033899e78a0b343f8928850cf7a305": {
+      "auth_version": 1,
+      "ea_pk": "<base64, 32 bytes>",
+      "signatures": [
+        {
+          "key_id": "valar-2026-q2",
+          "alg": "ed25519",
+          "sig": "<base64, 64 bytes>"
+        }
+      ]
+    }
   }
 }
 ```
 
-### Field Definitions
+#### Wrapper Field Definitions
 
 
-| Field                              | Type             | Description                                                                                                                    |
-| ---------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `config_version`                   | integer          | Schema version of this configuration document. Currently 1.                                                                    |
-| `vote_round_id`                    | string           | Hex-encoded 32-byte vote round identifier (64 characters, lowercase).                                                          |
-| `vote_servers`                     | array            | One or more vote server base URLs serving both chain and helper endpoints. Each entry has `url` (string) and `label` (string). |
-| `pir_endpoints`                    | array            | One or more nullifier PIR server base URLs. Each entry has `url` and `label`.                                                  |
-| `snapshot_height`                  | integer          | Zcash block height at which the Orchard pool snapshot was taken.                                                               |
-| `vote_end_time`                    | integer          | Unix timestamp (seconds) after which votes are no longer accepted.                                                             |
-| `proposals`                        | array            | Ordered list of proposals. Each has `id` (integer, 1-indexed), `title` (string), `description` (string), and `options` (array of `{index, label}`). |
-| `supported_versions.pir`           | array of strings | PIR retrieval scheme versions supported by the servers (e.g., `["v0", "v1"]`).                                                 |
-| `supported_versions.vote_protocol` | string           | Vote protocol version covering the ZKP circuits and commitment tree structure (e.g., `"v0"`).                                  |
-| `supported_versions.tally`         | string           | Tally method version covering threshold decryption and result aggregation (e.g., `"v0"`).                                      |
-| `supported_versions.vote_server`   | string           | Vote server version covering the REST API (e.g., `"v1"`).                                                                      |
+| Field                              | Type             | Description                                                                                                                         |
+| ---------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `config_version`                   | integer          | Schema version of the dynamic configuration wrapper. Currently 1.                                                                   |
+| `vote_servers`                     | array            | One or more vote server base URLs serving both chain and helper endpoints. Each entry has `url` (string) and `label` (string).      |
+| `pir_endpoints`                    | array            | One or more nullifier PIR server base URLs. Each entry has `url` and `label`.                                                       |
+| `supported_versions.pir`           | array of strings | PIR retrieval scheme versions supported by the servers (e.g., `["v0", "v1"]`).                                                      |
+| `supported_versions.vote_protocol` | string           | Vote protocol version covering the ZKP circuits and commitment tree structure (e.g., `"v0"`).                                       |
+| `supported_versions.tally`         | string           | Tally method version covering threshold decryption and result aggregation (e.g., `"v0"`).                                           |
+| `supported_versions.vote_server`   | string           | Vote server version covering the REST API (e.g., `"v1"`).                                                                           |
+| `rounds`                           | object           | Registry of authenticated rounds. Keys are lowercase hex `vote_round_id` values (64 characters). May be empty. See [Round Entry Field Definitions]. |
 
 
-### Validation Rules
+#### Round Entry Field Definitions
 
-A wallet MUST validate the configuration before use:
+Each value in `rounds` is a JSON object describing the authentication
+material for one round.
+
+
+| Field                 | Type    | Description                                                                                                                              |
+| --------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth_version`        | integer | Schema version of this round entry. Determines which fields are required and which bytes are covered by `signatures` (see [Signature Verification]). Currently 1. |
+| `ea_pk`               | string  | Base64-encoded 32-byte election authority public key for this round (compressed Pallas point). Required when `auth_version` is 1.       |
+| `signatures`          | array   | One or more admin signatures over the bytes specified by `auth_version`. MUST contain at least one entry.                                |
+| `signatures[].key_id` | string  | Identifier of the admin key that produced this signature. MUST match a `key_id` in the static configuration's `trusted_keys`.      |
+| `signatures[].alg`    | string  | Signature algorithm. MUST match the `alg` declared on the corresponding trusted admin key.                                               |
+| `signatures[].sig`    | string  | Base64-encoded signature bytes. For `alg: "ed25519"`, exactly 64 bytes per RFC 8032 [^rfc8032].                                          |
+
+
+### Signature Verification
+
+The required fields and the bytes covered by `signatures` for a round
+entry are determined by the entry's `auth_version`. This specification
+defines:
+
+
+| `auth_version` | Required entry fields            | Covered bytes                                            |
+| -------------- | -------------------------------- | -------------------------------------------------------- |
+| `1`            | `ea_pk`, `signatures`            | The 32-byte raw decoding of the entry's `ea_pk` field.   |
+
+
+For each entry in a round's `signatures`, a wallet:
+
+1. MUST resolve `key_id` to an entry in the static configuration's
+   `trusted_keys`. If no matching entry exists, the signature
+   MUST be treated as invalid.
+2. MUST verify that the signature's `alg` is identical to the `alg`
+   declared on the resolved trusted key. If they differ, the signature
+   MUST be treated as invalid.
+3. MUST verify the signature against the bytes covered by the entry's
+   `auth_version`, using the algorithm declared by `alg`. For
+   `"ed25519"`, signatures are verified per RFC 8032 [^rfc8032].
+
+A wallet MUST accept a round entry only if at least one signature
+validates per the above. Future revisions of this specification MAY
+define higher thresholds (m-of-n) or require signatures from a
+specific subset of trusted keys; v1 implementations require a single
+valid signature per round entry.
+
+### Wrapper Validation Rules
+
+A wallet MUST validate the dynamic configuration wrapper before use:
 
 - `config_version` MUST be a version the wallet recognizes. This
-specification defines version 1.
-- `vote_round_id` MUST be exactly 64 lowercase hexadecimal characters.
+  specification defines version 1.
 - `vote_servers` MUST contain at least one entry.
 - `pir_endpoints` MUST contain at least one entry.
-- `snapshot_height` MUST be greater than 0.
-- `proposals` MUST contain between 1 and 15 entries.
-- Each proposal MUST have between 2 and 8 options.
-- Proposal `id` values MUST be unique and in the range 1 to 15.
-- Option `index` values within a proposal MUST be unique and 0-indexed.
+- `rounds` MUST be a JSON object. It MAY be empty.
+- All keys of `rounds` MUST be exactly 64 lowercase hexadecimal
+  characters.
 - The wallet MUST check version compatibility as specified in
-[Version Handling]. In summary: `supported_versions.vote_server`,
-`supported_versions.vote_protocol`, and `supported_versions.tally`
-MUST be recognized versions; `supported_versions.pir` MUST contain
-at least one version the wallet supports.
+  [Version Handling]. In summary: `supported_versions.vote_server`,
+  `supported_versions.vote_protocol`, and `supported_versions.tally`
+  MUST be recognized versions; `supported_versions.pir` MUST contain
+  at least one version the wallet supports.
+
+A wrapper-validation failure blocks all voting interactions for the
+session. Failures within individual round entries are scoped to the
+affected round and do not block interaction with other rounds; see
+[Per-Round Authentication].
+
+### Per-Round Authentication
+
+Before a wallet performs vote-related operations on a chain round
+(delegation, vote casting, share submission, tally review), it MUST
+authenticate the round against the dynamic configuration:
+
+1. Look up the chain round's `vote_round_id` (lowercase hex encoding)
+   as a key in `rounds`. If the entry is absent, the wallet MUST treat
+   the round as **unauthenticated** and MUST NOT proceed with vote
+   operations on that round. Wallets SHOULD surface unauthenticated
+   rounds in user-facing lists with a clear indicator rather than
+   silently filtering them, so users have visibility into discrepancies
+   between the chain and the configuration.
+2. The entry's `auth_version` MUST be a version the wallet recognizes.
+   An unrecognized `auth_version` MUST be treated as an
+   authentication failure for that entry.
+3. The entry MUST contain all fields required by its `auth_version`
+   per [Signature Verification], correctly encoded.
+4. `signatures` MUST contain at least one entry, and at least one
+   signature MUST validate per [Signature Verification].
+5. The wallet MUST confirm that the chain round's `ea_pk` is
+   byte-equal to the entry's `ea_pk`. A mismatch indicates either a
+   stale configuration or a hostile vote server, and the wallet MUST
+   NOT proceed with that round.
+
+A round-authentication failure is scoped to the affected round; the
+wallet MUST continue to allow interaction with other rounds whose
+entries authenticate successfully.
 
 ### Distribution
 
-The vote configuration is published out-of-band for each vote round.
-Distribution mechanisms include:
+The static configuration is bundled with the wallet release; its
+distribution and integrity are guaranteed by the wallet's release
+channel (e.g., a platform-signed application binary).
 
-- A developer-merged pull request to a well-known repository linking
-to the configuration file.
-- A CDN or API endpoint serving the configuration.
-- Bundling the configuration within a wallet release.
+The dynamic configuration is published at the URL declared by
+`dynamic_config_url` in the static configuration. Distribution
+mechanisms include a CDN, a static-file hosting service, or any
+HTTPS-reachable endpoint serving the JSON document. The choice is
+outside the scope of this specification.
 
-The choice of distribution mechanism is outside the scope of this
-specification. Regardless of the mechanism, the wallet MUST validate the
-configuration as described above before using it.
+Regardless of the distribution mechanism, the wallet MUST validate
+the wrapper per [Wrapper Validation Rules] and authenticate each
+round it interacts with per [Per-Round Authentication] before using
+it. Note that in v1 the admin signature scope covers an entry's
+`ea_pk` only; it does NOT cover the wrapper fields (`vote_servers`,
+`pir_endpoints`, `supported_versions`) or the membership of the
+`rounds` registry itself. See [Static and Dynamic Configuration
+Split] in [Rationale] for the threat-model implications.
 
 ## Data Query Endpoints
 
@@ -315,7 +467,6 @@ Returns the active voting round, if any.
 | `vote_round_id`      | base64 (32 bytes) | Round identifier.                                                    |
 | `snapshot_height`    | uint64            | Zcash snapshot block height.                                         |
 | `snapshot_blockhash` | base64 (32 bytes) | Zcash block hash at snapshot.                                        |
-| `proposals_hash`     | base64 (32 bytes) | SHA-256 hash of the proposals array (see [Proposals Hash]).          |
 | `vote_end_time`      | uint64            | Unix timestamp (seconds).                                            |
 | `nullifier_imt_root` | base64 (32 bytes) | Nullifier non-membership tree root.                                  |
 | `nc_root`            | base64 (32 bytes) | Orchard note commitment tree root.                                   |
@@ -334,35 +485,25 @@ keys, ECIES payloads). These fields exist for validator coordination
 and have no bearing on wallet operations, so they are not documented
 here. See [^ea-ceremony] for details.
 
-The `proposals` field in the VoteRound response contains the same
-proposals as the vote configuration document. The `proposals_hash`
-field can be used to verify consistency between the two sources.
+Wallets MUST authenticate the active round per
+[Per-Round Authentication] before proceeding: look up the round's
+`vote_round_id` in the dynamic configuration's `rounds` registry,
+verify the entry's signatures, and confirm the entry's `ea_pk` is
+byte-equal to the active round's `ea_pk`. This binds the
+configuration's authenticated EA public key to the chain state
+returned by the (otherwise unauthenticated) vote server. Wallets
+display the `proposals` field from the active round response. Because
+proposals are not distributed in the dynamic configuration, wallets do
+not perform a separate consistency check against configuration
+metadata.
 
-### Proposals Hash
+Wallets MUST validate the active round's proposals before displaying or
+using them:
 
-The `proposals_hash` is SHA-256 over the canonical JSON serialization
-of the `proposals` array, allowing wallets to verify that the
-proposals shown to the user match those on the vote chain.
-
-To compute: construct a JSON array of proposal objects containing
-`id`, `title`, `description`, and `options` (each with `index`, `label`),
-ordered by `id` then `index` ascending, with object keys in the order
-listed. Serialize with no whitespace and SHA-256 the UTF-8 result. The
-JSON serialization MUST NOT escape the forward slash character (`/`);
-non-ASCII characters are emitted as UTF-8 bytes, not as `\uXXXX`
-escapes. Control characters (U+0000 through U+001F) are escaped per
-RFC 8259 (`\b`, `\f`, `\n`, `\r`, `\t`, or `\u00XX`).
-
-Example preimage (from [Vote Configuration Format]):
-
-```
-[{"id":1,"title":"Approve protocol upgrade","description":"Approve or oppose the proposed protocol upgrade.","options":[{"index":0,"label":"Support"},{"index":1,"label":"Oppose"}]}]
-```
-
-SHA-256 of the above preimage: `3f9a361d43c4ddb77ad138a091374e2e2958718e64937f33df99a09bd567e63d`.
-
-Wallets SHOULD verify `proposals_hash` against the vote
-configuration before proceeding.
+- `proposals` MUST contain between 1 and 15 entries.
+- Each proposal MUST have between 2 and 8 options.
+- Proposal `id` values MUST be unique and in the range 1 to 15.
+- Option `index` values within a proposal MUST be unique and 0-indexed.
 
 If no active round exists, the response contains a `round` field with
 a null or empty value.
@@ -790,7 +931,6 @@ context. The following table lists every occurrence and its encoding:
 
 | Context                                         | Encoding                      |
 | ----------------------------------------------- | ----------------------------- |
-| Vote configuration JSON (`vote_round_id` field) | Hex (64 lowercase characters) |
 | URL path parameters (`{round_id}`, `{roundId}`) | Hex (64 lowercase characters) |
 | Delegation request body (`vote_round_id`)       | Base64 (32 bytes)             |
 | Vote commitment request body (`vote_round_id`)  | Base64 (32 bytes)             |
@@ -802,6 +942,85 @@ protocol definition are encoded as JSON numbers.
 value (e.g., `SESSION_STATUS_ACTIVE` = 1).
 
 # Rationale
+
+## Static and Dynamic Configuration Split
+
+The vote configuration is split into a wallet-bundled static document
+and a server-published dynamic document so that the trust anchor
+(admin public keys) and the operational endpoints can evolve
+independently. The static document is part of the wallet's signed
+binary and changes only on release; the dynamic document is
+republished as rounds are added, and individual round entries within
+it are authenticated against the static document's trusted admin keys.
+
+Three wins follow from this split. First, rotating endpoints (e.g., a
+new vote server URL) does not require a wallet release, while rotating
+the trust anchor itself (admin keys) does — which is the right
+distinction. Second, the round-binding check (chain `ea_pk` matches
+the entry's `ea_pk`) gives the wallet a tight two-step proof per
+round: the admin signature attests that this `ea_pk` is the sanctioned
+key for that round, and the chain query attests that the round in
+progress uses that key. A single break in either step is detected.
+Third, the `rounds` registry naturally supports multiple concurrent
+authenticated rounds and historic rounds for tally review and audit,
+without requiring per-round CDN republish coordination with the chain.
+
+The first win has practical weight for operator participation. Because
+the dynamic configuration is published through ordinary configuration
+governance (typically a merged pull request to a public repository),
+bringing a new vote server or PIR operator into rotation is not
+coupled to either the wallet release process or a chain deploy. As
+soon as the change is merged and the document is republished, wallets
+pick the new endpoint up on their next configuration fetch. The same
+path applies to removing an operator that has ceased participation, or
+to swapping out an operator's URL. This lowers the operational cost of
+expanding, rotating, or shrinking the operator set during normal
+operation and during a round's lifetime.
+
+## Per-Round Registry Model
+
+`rounds` is keyed by `vote_round_id` because the round identifier is
+the natural lookup key when the wallet has fetched a round from the
+chain. Map shape (rather than an array of objects) makes the unique-id
+constraint inherent in the encoding and makes lookup O(1).
+
+Per-entry signatures (rather than a single signature over the entire
+`rounds` map) make the registry append-only at the cryptographic
+level: adding a round signs only the new entry; existing entries'
+signatures remain valid forever and never need to be re-signed. This
+keeps key handling minimal during normal operation and decouples each
+round's authenticity from the publisher's current state. It also lets
+different rounds be signed by different keys, naturally supporting
+admin key rotation across the registry's lifetime.
+
+The `auth_version` field on each entry is the per-round extension
+hook. A future revision can introduce `auth_version: 2` with
+additional required fields and a wider signature scope (for example,
+covering per-round endpoint pins) without invalidating existing
+`auth_version: 1` entries. Wallets that do not recognize an entry's
+`auth_version` reject only that entry, not the whole configuration.
+
+In v1, the signature scope covers an entry's `ea_pk` only. This is
+sufficient to prevent a compromised dynamic-configuration host from
+substituting the EA public key the wallet binds to the chain for any
+specific round. v1 does NOT defend against:
+
+- A compromised host substituting wrapper fields (`vote_servers`,
+  `pir_endpoints`, `supported_versions`); these are CDN-trusted in v1.
+- A compromised host omitting an entry from `rounds` to make a round
+  appear unauthenticated. To preserve user visibility of this case,
+  wallets SHOULD surface unauthenticated chain rounds in their UI
+  rather than silently filtering them.
+- A compromised host adding spurious entries to `rounds`; these are
+  rejected by signature verification.
+
+Wider scopes are future, backwards-incompatible extensions signaled
+by bumping `auth_version` (or, for wrapper coverage, `config_version`).
+
+The list shape of `signatures` is intentional: it admits multi-admin
+co-signing and m-of-n threshold policies as future, non-breaking
+extensions. v1 requires a single valid signature per entry; the schema
+does not need to change to require more.
 
 ## Unified Vote Servers
 
@@ -847,6 +1066,8 @@ is available at
 [^protocol-poseidon]: [Zcash Protocol Specification, Version 2025.6.3 [NU6.1]. Section 5.4.2: Pseudo Random Functions](protocol/protocol.pdf#concreteprfs)
 
 [^rfc4648]: [RFC 4648: The Base16, Base32, and Base64 Data Encodings](https://www.rfc-editor.org/rfc/rfc4648)
+
+[^rfc8032]: [RFC 8032: Edwards-Curve Digital Signature Algorithm (EdDSA)](https://www.rfc-editor.org/rfc/rfc8032)
 
 [^voting-protocol]: [Draft ZIP: Shielded Voting Protocol](draft-valargroup-shielded-voting.md)
 
