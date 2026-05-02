@@ -130,24 +130,18 @@ See [Version Handling] for the normative rules.
    `vote_round_id`.
    See [Static Configuration] and [Dynamic Configuration].
 
-2. **Validate optional dynamic configuration pin.** If the static
-   configuration contains `dynamic_config_sha256`, compute SHA-256 over
-   the exact fetched response body bytes and compare it to the pinned
-   lowercase hex digest. Reject the configuration and stop if the
-   digest does not match.
-
-3. **Validate dynamic configuration wrapper.** Check the wrapper
+2. **Validate dynamic configuration wrapper.** Check the wrapper
    fields (`config_version`, `vote_servers`, `pir_endpoints`,
    `supported_versions`) per [Wrapper Validation Rules] and verify
    version compatibility per [Version Handling]. Reject the
    configuration and stop if any check fails.
 
-4. **Fetch active round from chain.** Query `GET /shielded-vote/v1/rounds/active`
+3. **Fetch active round from chain.** Query `GET /shielded-vote/v1/rounds/active`
    to confirm the round is ACTIVE and retrieve on-chain parameters:
    `ea_pk`, `nullifier_imt_root`, `nc_root`, and `proposals`.
    See [Active Round].
 
-5. **Authenticate round and bind to chain.** Look up the active
+4. **Authenticate round and bind to chain.** Look up the active
    round's `vote_round_id` in `rounds`. Verify the entry's signatures
    per [Signature Verification], then confirm the active round's
    `ea_pk` is byte-equal to the entry's `ea_pk`. Together these bind
@@ -256,7 +250,6 @@ platform-signed application binary).
 {
   "static_config_version": 1,
   "dynamic_config_url": "https://example.org/voting-config.json",
-  "dynamic_config_sha256": "<hex, 32 bytes>",
   "trusted_keys": [
     {
       "key_id": "valar-2026-q2",
@@ -274,7 +267,6 @@ platform-signed application binary).
 | ----------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `static_config_version`       | integer | Schema version of the static configuration document. Currently 1.                                                        |
 | `dynamic_config_url`          | string  | HTTPS URL from which the wallet fetches the dynamic configuration document.                                              |
-| `dynamic_config_sha256`       | string  | Optional lowercase hex-encoded SHA-256 digest of the exact dynamic configuration response body bytes. If present, wallets MUST verify the digest before decoding the dynamic configuration. |
 | `trusted_keys`          | array   | Set of admin keys whose signatures the wallet will accept on the dynamic configuration. MUST contain at least one entry. |
 | `trusted_keys[].key_id` | string  | Stable identifier for the key. Referenced by `rounds[round_id].signatures[].key_id` in the dynamic configuration.        |
 | `trusted_keys[].alg`    | string  | Signature algorithm. This specification defines `"ed25519"`.                                                              |
@@ -442,13 +434,6 @@ The dynamic configuration is published at the URL declared by
 mechanisms include a CDN, a static-file hosting service, or any
 HTTPS-reachable endpoint serving the JSON document. The choice is
 outside the scope of this specification.
-
-The static configuration MAY also include `dynamic_config_sha256`. If
-present, wallets MUST compute SHA-256 over the exact fetched dynamic
-configuration response body bytes, encode the digest as lowercase hex,
-and reject the dynamic configuration unless it matches the pinned value.
-The hash check is performed before JSON decoding or wrapper validation.
-If the field is absent, wallets do not perform whole-file hash pinning.
 
 Regardless of the distribution mechanism, the wallet MUST validate
 the wrapper per [Wrapper Validation Rules] and authenticate each
@@ -992,15 +977,6 @@ to swapping out an operator's URL. This lowers the operational cost of
 expanding, rotating, or shrinking the operator set during normal
 operation and during a round's lifetime.
 
-Deployments that want stronger protection for wrapper fields can opt
-into `dynamic_config_sha256` in the static configuration. Pinning binds
-the entire fetched dynamic document, including wrapper fields and
-registry membership, to the wallet release. That closes the CDN-trusted
-wrapper gap for pinned releases, at the cost of reintroducing release
-coupling for every dynamic configuration update. Deployments that need
-operator rotation without a wallet release omit the pin and retain the
-v1 per-round authentication model.
-
 ## Per-Round Registry Model
 
 `rounds` is keyed by `vote_round_id` because the round identifier is
@@ -1037,11 +1013,6 @@ specific round. v1 does NOT defend against:
   rather than silently filtering them.
 - A compromised host adding spurious entries to `rounds`; these are
   rejected by signature verification.
-
-If the static configuration pins `dynamic_config_sha256`, these host
-substitution and omission attacks are detected for that pinned document.
-The protection lasts only for the exact dynamic configuration bytes
-whose digest was bundled in the wallet release.
 
 Wider scopes are future, backwards-incompatible extensions signaled
 by bumping `auth_version` (or, for wrapper coverage, `config_version`).
