@@ -146,7 +146,7 @@ when it operated under proof-of-work. [^forum-proposal]
 rate and block time as a poisson process. The 3.9% is taken from noticing that current p90 block propagation between EU and US nodes is 700ms, and then 
 rounding that up to 1s. This needs to be combined with measuring latencies when the blocks are full, yet it is hard to see how this could risk approaching 2s.)
 
-A devnet experiment with 99 geographically-distributed Zebra nodes producing 2MB blocks (full for the majority of the test) at 25-second target spacing measured a stale-height rate of 4.86% and a fork rate of 0.37% — both below the 5% safety threshold — when nodes used tuned TCP configuration. The devnet's node distribution was significantly more decentralized than today's mainnet, so these figures represent a near-worst-case scenario. This indicates that 25-second target spacing can be deployed safely provided that node TCP configuration is tuned for low-latency propagation. [^devnet-blocktime-test]
+A devnet experiment with 99 geographically-distributed Zebra nodes producing 2MB blocks at 25-second target spacing measured a stale block rate of 4.86% and a fork rate of 0.37%. Both below the safety threshold of 5% set via Ethereum's historical proof-of-work stale rate. The only modification required to get these low rates was to tune TCP configuration (more details in the linked footnote). The devnet's node distribution was significantly more decentralized than today's mainnet, so these figures represent a near worst-case scenario. This indicates that 25-second target spacing can be deployed safely with no gossip or p2p changes. [^devnet-blocktime-test]
 
 
 ## Block processing time
