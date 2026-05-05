@@ -146,7 +146,7 @@ when it operated under proof-of-work. [^forum-proposal]
 rate and block time as a poisson process. The 3.9% is taken from noticing that current p90 block propagation between EU and US nodes is 700ms, and then 
 rounding that up to 1s. This needs to be combined with measuring latencies when the blocks are full, yet it is hard to see how this could risk approaching 2s.)
 
-@evan-forbes is working on experiments to further show the block propagation delay, under different network and hardware configurations.
+A devnet experiment with 99 geographically-distributed Zebra nodes producing 2MB blocks (full for the majority of the test) at 25-second target spacing measured a stale-height rate of 4.86% and a fork rate of 0.37% — both below the 5% safety threshold — when nodes used tuned TCP configuration. The devnet's node distribution was significantly more decentralized than today's mainnet, so these figures represent a near-worst-case scenario. This indicates that 25-second target spacing can be deployed safely provided that node TCP configuration is tuned for low-latency propagation. [^devnet-blocktime-test]
 
 
 ## Block processing time
@@ -591,3 +591,5 @@ activation heights and consensus branch IDs.
 [^slowfastblocks]: [On Slow and Fast Block Times](https://blog.ethereum.org/2015/09/14/on-slow-and-fast-block-times/)
 
 [^forum-proposal]: [Forum: Proposal — Lower Zcash Block Target Spacing to 25s](https://forum.zcashcommunity.com/t/proposal-lower-zcash-block-target-spacing-to-25s/54577)
+
+[^devnet-blocktime-test]: [Forum: Zcash Block Time Reduction Appears Safe for NU7 w/ Zebra-only Devnet](https://forum.zcashcommunity.com/t/zcash-block-time-reduction-appears-safe-for-nu7-w-zebra-only-devnet/55586)
