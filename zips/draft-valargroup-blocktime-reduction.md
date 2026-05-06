@@ -256,12 +256,15 @@ $$
 $$
 
 Redefine $\mathsf{BlockSubsidy}$ to add a case for post-activation
-heights:
+heights. The prior Blossom case in § 7.8 'Calculation of Block Subsidy
+and Founders' Reward', currently written as "otherwise", must be
+amended to "if $\mathsf{IsBlossomActivated}(\mathsf{height})$ and not
+$\mathsf{IsNU7Activated}(\mathsf{height})$":
 
 $$
 \mathsf{BlockSubsidy}(\mathsf{height}) :=
   \begin{cases}
-    \ldots &\text{(prior cases unchanged)} \\\\[1ex]
+    \ldots &\text{(prior cases, with the Blossom case amended as above)} \\\\[1ex]
     \left\lfloor \dfrac{\mathsf{MaxBlockSubsidy}}{\mathsf{BlossomPoWTargetSpacingRatio} \cdot \mathsf{NU7PoWTargetSpacingRatio} \cdot 2^{\mathsf{Halving}(\mathsf{height})}} \right\rfloor,
       &\text{if } \mathsf{IsNU7Activated}(\mathsf{height})
   \end{cases}
