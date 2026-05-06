@@ -181,13 +181,11 @@ verification during live network syncing since version 3.0.0. With the
 action limits, a worst-case block's Orchard bundle can be fully
 batch-verified in a small number of batches.
 
-**Estimated timing.** In local benchmarks limited to 4 threads, on
-an AMD Ryzen AI 9 HX 370 (12 cores, 24 threads, 2.0 GHz base clock,
-up to 5.1 GHz boost clock, 28 W default TDP, 15--54 W configurable
-TDP), availability verification for an Orchard-heavy block at the
-action limits completed in 529.00--554.30 ms, and availability
-verification for a Sapling-heavy block at the action limits completed
-in 1.1017--1.1329 s. [^amd-ryzen-ai-hx-370]
+**Estimated timing.** In local benchmarks on a modern AMD laptop CPU
+limited to 4 threads, availability verification for an Orchard-heavy
+block at the action limits completed in 529.00--554.30 ms, and
+availability verification for a Sapling-heavy block at the action
+limits completed in 1.1017--1.1329 s.
 When transactions have already been pre-verified upon
 entering the mempool, which is the typical case for a node that has
 been online, block validation reduces to checking signatures and
@@ -599,5 +597,3 @@ activation heights and consensus branch IDs.
 [^forum-proposal]: [Forum: Proposal — Lower Zcash Block Target Spacing to 25s](https://forum.zcashcommunity.com/t/proposal-lower-zcash-block-target-spacing-to-25s/54577)
 
 [^devnet-blocktime-test]: [Forum: Zcash Block Time Reduction Appears Safe for NU7 w/ Zebra-only Devnet](https://forum.zcashcommunity.com/t/zcash-block-time-reduction-appears-safe-for-nu7-w-zebra-only-devnet/55586)
-
-[^amd-ryzen-ai-hx-370]: [AMD Ryzen AI 9 HX 370 specifications](https://www.amd.com/en/support/downloads/drivers.html/processors/ryzen/ryzen-ai-300-series/amd-ryzen-ai-9-hx-370.html#specifications)
