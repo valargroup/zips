@@ -168,7 +168,7 @@ packed Orchard block requires verifying all action proofs and spend
 authorization signatures for those ~617 actions.
 
 **Proposed worst case:** With the action limits, a block contains at
-most 306 Orchard actions and a maximum of 300 Sapling input or output items. This is roughly half the
+most 306 Orchard actions and a maximum of 300 Sapling inputs+outputs. This is roughly half the
 current Orchard worst case and a fraction of the Sapling worst case.
 The per-block verification work is therefore substantially reduced.
 
