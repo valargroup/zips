@@ -136,17 +136,17 @@ mining centralization risk, block propagation delay, and block verification
 times. Today the stale rate is 0.4%, but this may be lower than what pure block
 propagation delay may imply due to hashpower centralization in mining pools.
 
-At 25-second block target spacing, the projected stale (orphan) block
-rate is approximately 1.3% using theoretical models, or approximately
-3.9% using significantly rounded-up estimates of Zcash network propagation 
-delays. Both figures are well below Ethereum's historical stale rate of 5.4%
-when it operated under proof-of-work. [^forum-proposal]
-
-(TODO: Refine above numbers and expand on them. The 1.3% is derived from a very straightforward method, of estimating propagation delay using the current uncle
-rate and block time as a poisson process. The 3.9% is taken from noticing that current p90 block propagation between EU and US nodes is 700ms, and then 
-rounding that up to 1s. This needs to be combined with measuring latencies when the blocks are full, yet it is hard to see how this could risk approaching 2s.)
-
-A devnet experiment with 99 geographically-distributed Zebra nodes producing 2MB blocks at 25-second target spacing measured a stale block rate of 4.86% and a fork rate of 0.37%. Both below the safety threshold of 5% set via Ethereum's historical proof-of-work stale rate. The only modification required to get these low rates was to tune TCP configuration (more details in the linked footnote). The devnet's node distribution was significantly more decentralized than today's mainnet, so these figures represent a near worst-case scenario. This indicates that 25-second target spacing can be deployed safely with no gossip or p2p changes. [^devnet-blocktime-test]
+At 25-second block target spacing, the theoretical stale block rate is
+approximately 3.26%, derived from measured Zcash network propagation
+delays. A devnet experiment with 99 geographically-distributed Zebra
+nodes producing 2MB blocks at 25-second target spacing measured a stale
+block rate of 4.86% and a fork rate of 0.37%. Both observed figures are
+below the 5% safety threshold set by Ethereum's historical proof-of-work
+stale rate. [^forum-proposal] The only modification required to achieve
+these rates was tuning TCP configuration (more details in the linked
+footnote). The devnet's node distribution was significantly more
+decentralized than today's mainnet, so these figures represent a
+near worst-case scenario. [^devnet-blocktime-test]
 
 
 ## Block processing time
@@ -178,10 +178,13 @@ verification during live network syncing since version 3.0.0. With the
 action limits, a worst-case block's Orchard bundle can be fully
 batch-verified in a small number of batches.
 
-**Estimated timing.** On a typical 4-core machine, worst-case full
-block verification (including proof verification for all shielded
-components) is estimated at under 500ms for a block at the
-action limits. (TODO: Refine with easily citeable benchmarks)
+**Estimated timing.** In local benchmarks limited to 4 threads, on
+an AMD Ryzen AI 9 HX 370 (12 cores, 24 threads, 2.0 GHz base clock,
+up to 5.1 GHz boost clock, 28 W default TDP, 15--54 W configurable
+TDP), availability verification for an Orchard-heavy block at the
+action limits completed in 529.00--554.30 ms, and availability
+verification for a Sapling-heavy block at the action limits completed
+in 1.1017--1.1329 s. [^amd-ryzen-ai-hx-370]
 When transactions have already been pre-verified upon
 entering the mempool, which is the typical case for a node that has
 been online, block validation reduces to checking signatures and
@@ -413,9 +416,10 @@ used both before and after activation.
 ### Block-count-based constants
 
 The following constants, measured in number of blocks, were reviewed.
-Implementations SHOULD scale these by
-$\mathsf{NU7PoWTargetSpacingRatio}$ where they represent
-a time duration:
+Implementations SHOULD scale by $\mathsf{NU7PoWTargetSpacingRatio}$
+those constants that represent a time duration (marked "Scale by 3"
+below), and SHOULD NOT scale those whose semantics are intrinsically
+measured in blocks (marked "No change"):
 
 | Constant                                    | Current | Post-activation | Notes |
 |---------------------------------------------|---------|-----------------|-------|
@@ -596,3 +600,5 @@ activation heights and consensus branch IDs.
 [^forum-proposal]: [Forum: Proposal — Lower Zcash Block Target Spacing to 25s](https://forum.zcashcommunity.com/t/proposal-lower-zcash-block-target-spacing-to-25s/54577)
 
 [^devnet-blocktime-test]: [Forum: Zcash Block Time Reduction Appears Safe for NU7 w/ Zebra-only Devnet](https://forum.zcashcommunity.com/t/zcash-block-time-reduction-appears-safe-for-nu7-w-zebra-only-devnet/55586)
+
+[^amd-ryzen-ai-hx-370]: [AMD Ryzen AI 9 HX 370 specifications](https://www.amd.com/en/support/downloads/drivers.html/processors/ryzen/ryzen-ai-300-series/amd-ryzen-ai-9-hx-370.html#specifications)
