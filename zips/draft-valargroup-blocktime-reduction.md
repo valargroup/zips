@@ -153,11 +153,14 @@ A devnet experiment with 99 geographically-distributed Zebra nodes producing 2MB
 
 A prerequisite for reducing the target block spacing is that block validation and
 propagation must remain small relative to the target spacing. The per-pool
-action limits introduced by this proposal ensure that worst-case block
-processing time is *lower* per block than today's. The increase in consensus
-bandwidth and Orchard TPS does mean that full node sync will increase in net
-time. We accept this trade-off (TODO: be concrete with timing increases, and
-remark that more CPU cores fixes this)
+propagation remain small relative to the target spacing. The per-pool
+action limits introduced by this proposal ensure that worst-case
+*per-block* processing time is lower than today's. The fact that there
+are three times as many blocks in unit time does mean that the *overall*
+worst-case proportion of time taken for processing, and the cost of
+sync after a given time offline (for both full nodes and light clients)
+will increase. We accept this trade-off. (TODO: be concrete with timing
+increases, and the effect of parallelism.)
 
 **Current worst case:** A full 2 MB block today can contain up to ~617
 Orchard actions or ~2,090 Sapling outputs, with no per-pool limits. A fully
@@ -276,9 +279,8 @@ divide evenly by 3. The post-NU7 subsidy is
 $\mathsf{floor}(156250000 / 6) = 26041666$ zatoshi (0.26041666 ZEC),
 losing approximately 0.33 zatoshi per block to rounding. Over a full
 halving interval of 5,040,000 blocks this amounts to less than 0.017 ZEC
-of total underpaid issuance, a negligible amount. Should any of the NSM ZIP's
-be accepted, the difference can be credited to the NSM, otherwise it will just be
-under-minted from supply.
+of total underpaid issuance, a negligible amount. Should ZIP 234 be accepted,
+the difference will eventually be reissued.
 
 ### Shielded pool action limits
 
