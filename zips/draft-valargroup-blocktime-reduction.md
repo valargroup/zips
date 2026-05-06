@@ -41,7 +41,7 @@ the Sapling and Orchard shielded protocols.
 This solves three problems. 
 - Significantly improves the UX for actors who need 1 or 2 conf's. (Near Intents, small payments) The user-latency goes down 3x.
 - Increases consensus bandwidth, which amplifies the scaling impact of a future shielded pool which does not require shielded sync.
-- Introduces action limits, which short term more than doubles the Orchard TPS (2.9 → 6.1 TPS), while lowering the impact a DoS attacker can impose on wallets for shielded sync by 42% (270.5 → 156.83 MB/day).
+- Introduces action limits, which short term more than doubles the Orchard TPS (2.9 → 6.1 TPS), while lowering the impact a DoS attacker can impose on wallets; for example, maximum shielded sync bandwidth for light clients is reduced by 42% (270.5 → 156.83 MB/day).
 
 The action limits significantly decrease the number of Sprout and Sapling pool 
 outputs available per block, to lower the maximum shielded sync burden under 
@@ -88,22 +88,22 @@ stale rates have not significantly increased. See [^slowfastblocks] for
 analysis in various attack models. As this proposal meets the constraint of
 keeping stale rates low, this should under the "X% of hashpower is byzantine"
 threat model improve user confirmation times by a factor slightly under 3x. 
-Under the posts "Economic" threat model, where the user requires the block
+Under the post's "Economic" threat model, where the user requires the block
 rewards built on-top of their payment to exceed the value of the payment, this
-significantly improves the variance in confirmation latency. (But makes the 
-mean latency a bit higher due to stale rate) As noted there, this attack model
-is not applied at sizable transactions. Its only potentially applied for small
-value ones, where actually the granularity of block times likely lowers time
-until sufficient finality. We do not argue for reducing wall-clock block 
-confirmation counts aside from exisitng 1-2 confirmation users in this ZIP.
-However, we do expect many classes of users to be able to wall-clock lower 
-theirs under consistent threat modelling of what they choose today.
+significantly improves the variance in confirmation latency (but makes the 
+mean latency a bit higher due to stale rate). As noted there, this attack model
+is not applied at sizable transactions. It is only potentially applied for small-valued
+transactions, where the granularity of block times likely lowers time
+until sufficient finality. We do not argue for reducing block confirmation counts in this ZIP.
+However, we do expect many classes of users to be able to reduce their expected 
+time until funds are considered to have been received under threat modelling 
+consistent with block confirmation counts they choose today.
 
-However, Zcash uniquely has a second cost on scaling, the shielded sync. Every 
+Zcash has a second cost imposed by scaling, the shielded sync. Every 
 shielded transaction induces a bandwidth overhead for every wallet
 and an extra trial decryption, so we must carefully understand the impact a DOS 
-attacker can cause. Today the worst case DOS attack can induce 270.5
-MB of wallet sync download to clients per day, and 4.8M trial decrypts per
+attacker can cause. Today the worst-case DoS attack can induce 270.5
+MB of wallet sync download to clients per day, and 4.8M trial decryptions per
 day. We propose introducing action limits in Orchard (306 actions per block),
 and (input+output) limits for Sapling (300 per block). With these limits, the
 worst case becomes 156.83 MB bandwidth and 2.1M trial decrypts per day. This 
@@ -127,7 +127,7 @@ current distribution of shielded funds across pools. As of March 2026:
 The vast majority of shielded activity is already in Orchard, and this
 trend is expected to continue. The Sapling and Sprout limits are set
 generously relative to their current usage while substantially reducing
-their potential for DOS abuse.
+their potential for DoS.
 
 ## Stale block rate
 
@@ -151,11 +151,11 @@ A devnet experiment with 99 geographically-distributed Zebra nodes producing 2MB
 
 ## Block processing time
 
-A prerequisite for shorter block times is that block validation and
-propagation remain small relative to the target spacing. The per-pool
+A prerequisite for reducing the target block spacing is that block validation and
+propagation must remain small relative to the target spacing. The per-pool
 action limits introduced by this proposal ensure that worst-case block
 processing time is *lower* per block than today's. The increase in consensus
-bandwidth, and Orchard TPS does mean that full node sync will increase in net
+bandwidth and Orchard TPS does mean that full node sync will increase in net
 time. We accept this trade-off (TODO: be concrete with timing increases, and
 remark that more CPU cores fixes this)
 
@@ -165,15 +165,15 @@ packed Orchard block requires verifying all action proofs and spend
 authorization signatures for those ~617 actions.
 
 **Proposed worst case:** With the action limits, a block contains at
-most 306 Orchard actions or 300 Sapling IOs. This is roughly half the
+most 306 Orchard actions and a maximum of 300 Sapling input or output items. This is roughly half the
 current Orchard worst case and a fraction of the Sapling worst case.
 The per-block verification work is therefore substantially reduced.
 
 **Batch verification.** Orchard transaction verification benefits from
 batch validation, where proof and signature verification is amortized
-across multiple transactions. In current node implementations, Orchard
+across multiple transactions. In Zebra, Orchard
 transactions are batch-verified in groups of up to 64 transactions
-(each worst case being 2 actions). Zebra has performed batch
+(each worst case being a single action). Zebra has performed batch
 verification during live network syncing since version 3.0.0. With the
 action limits, a worst-case block's Orchard bundle can be fully
 batch-verified in a small number of batches.
@@ -262,7 +262,7 @@ $$
 \mathsf{BlockSubsidy}(\mathsf{height}) :=
   \begin{cases}
     \ldots &\text{(prior cases unchanged)} \\\\[1ex]
-    \left\lfloor \dfrac{\mathsf{MaxBlockSubsidy}}{\mathsf{BlossomPoWTargetSpacingRatio} \cdot \mathsf{NU7PoWTargetSpacingRatio} \cdot 2^{\mathsf{Halving}(\mathsf{height})}} \right\rfloor,
+    \mathsf{floor}\left(\dfrac{\mathsf{MaxBlockSubsidy}}{\mathsf{BlossomPoWTargetSpacingRatio} \cdot \mathsf{NU7PoWTargetSpacingRatio} \cdot 2^{\mathsf{Halving}(\mathsf{height})}}\right),
       &\text{if } \mathsf{IsNU7Activated}(\mathsf{height})
   \end{cases}
 $$
@@ -273,11 +273,11 @@ clock time remains the same.
 
 Note: the current post-Blossom block subsidy of 1.5625 ZEC does not
 divide evenly by 3. The post-NU7 subsidy is
-$\lfloor 156250000 / 6 \rfloor = 26041666$ zatoshi (0.26041666 ZEC),
+$\mathsf{floor}(156250000 / 6) = 26041666$ zatoshi (0.26041666 ZEC),
 losing approximately 0.33 zatoshi per block to rounding. Over a full
 halving interval of 5,040,000 blocks this amounts to less than 0.017 ZEC
 of total underpaid issuance, a negligible amount. Should any of the NSM ZIP's
-be accepted, the difference can be credited to the NSM, else it will just be
+be accepted, the difference can be credited to the NSM, otherwise it will just be
 under-minted from supply.
 
 ### Shielded pool action limits
@@ -322,15 +322,12 @@ JoinSplit produces 2 shielded outputs.
 
 This global budget ensures that the worst-case shielded sync bandwidth
 per block is bounded regardless of which combination of pools is used.
-If a block's Orchard actions reach the limit of 306, no Sapling or
-Sprout shielded outputs may be included. If both pools are used, their
-combined cost must stay within the budget.
 
 These limits do not apply to the transparent components of
 transactions. The overall 2 MB block size limit continues to apply as
 before.
 
-#### Compact sync bandwidth per action
+#### Rationale: Compact sync bandwidth per action
 
 The limits above are chosen to bound the worst-case bandwidth that
 lightweight wallets must download for shielded sync. The compact
