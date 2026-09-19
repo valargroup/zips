@@ -185,7 +185,7 @@ February 2031.
 
 Let $\mathsf{NSMReserveAfter}(\mathsf{height})$ be the NSM reserve balance
 after the block at $\mathsf{height}$ has been applied, and define the balance
-before NU7 activation to be zero. Define:
+before NU7 activation, including negative heights, to be zero. Define:
 
 $$
 \mathsf{NSMSubsidy}(\mathsf{height}) :=
@@ -193,10 +193,16 @@ $$
 0, & \textsf{if } \mathsf{height} < \mathsf{NSMReissuanceHeight}, \\
 \mathsf{ceiling}\!\left(
   \mathsf{NSM\_SUBSIDY\_FRACTION} \cdot
-  \mathsf{NSMReserveAfter}(\mathsf{height} - 1)
+  \left(\mathsf{NSMReserveAfter}(\mathsf{height} - 2)
+    - \mathsf{NSMSubsidy}(\mathsf{height} - 1)\right)
 \right), & \textsf{otherwise}.
 \end{cases}
 $$
+
+Both terms refer to the candidate block's ancestry. Subtracting the already
+determined subsidy for the intervening block prevents allocating the same
+reserve twice. The payout is therefore known after the block two heights
+earlier, allowing miners to precompute shielded coinbase proofs.
 
 The NSM reserve balance after a block MUST be calculated as:
 
