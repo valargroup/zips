@@ -136,7 +136,7 @@ satisfies the following requirements:
 1. The issuance can be summarized into a reasonably simple explanation.
 2. If no ZEC/TAZ is removed from circulation (and every subsidy is claimed in
    full), block subsidies are identical to the existing halving schedule.
-3. If the NSM Value Balance is greater than 0, then the additional block
+3. If the balance used to calculate the additional subsidy is greater than 0, then that
    subsidy must be non-zero, so that funds removed from circulation are
    eventually fully reissued.
 4. For any halving period, the additional block subsidies paid out are
@@ -199,8 +199,11 @@ in § 4.17 ‘Chain Value Pool Balances’ [^protocol-chainvaluepoolbalances] be
 
 $$\mathsf{AdditionalBlockSubsidy}(\mathsf{height}) := \begin{cases}
 0, & \text{if } \mathsf{height} < \mathsf{DEPLOYMENT\_BLOCK\_HEIGHT} \\
-\mathsf{ceiling}(\mathsf{BLOCK\_SUBSIDY\_FRACTION}(\mathsf{height}) \cdot \mathsf{NSMValueBalance}(\mathsf{height} - 1)), & \text{otherwise}
+\mathsf{ceiling}(\mathsf{BLOCK\_SUBSIDY\_FRACTION}(\mathsf{height}) \cdot (\mathsf{NSMValueBalance}(\mathsf{height} - 2) - \mathsf{AdditionalBlockSubsidy}(\mathsf{height} - 1))), & \text{otherwise}
 \end{cases}$$
+
+All values refer to the candidate block's ancestry, with
+$\mathsf{NSMValueBalance}$ defined to be zero at negative heights.
 
 Define $\mathsf{BlockSubsidy}(\mathsf{height})$ as:
 
@@ -217,8 +220,8 @@ value of a coinbase transaction in § 7.1.2 [^protocol-txnconsensus]) are
 unchanged and refer to the redefined function; in particular, funding streams
 receive their fixed percentage of the total (scheduled plus additional) block
 subsidy. Note that $\mathsf{BlockSubsidy}(\mathsf{height})$ now depends on the
-NSM Value Balance after block $\mathsf{height} - 1$, and not only on
-$\mathsf{height}$.
+NSM Value Balance after block $\mathsf{height} - 2$ less the already determined
+additional subsidy for block $\mathsf{height} - 1$, and not only on $\mathsf{height}$.
 
 In § 4.17 ‘Chain Value Pool Balances’ [^protocol-chainvaluepoolbalances], add
 the following definition. Let $\mathsf{removed}(\mathsf{height})$ be the total
@@ -258,7 +261,7 @@ All of these changes apply identically to Mainnet and Testnet.
   function only to the NSM Value Balance satisfies **Requirements 1**, **2**
   and **4** above.
 * We round up to the next zatoshi to satisfy **Requirement 3** above. Since
-  $\mathsf{BLOCK\_SUBSIDY\_FRACTION} < 1$ and the NSM Value Balance is a
+  $\mathsf{BLOCK\_SUBSIDY\_FRACTION} < 1$ and the unreserved NSM Value Balance is a
   non-negative integer number of zatoshi, the additional subsidy never exceeds
   the balance it is calculated from, so from NU7 activation the sum of the
   Issued Supply and the NSM Value Balance changes by exactly the Scheduled
@@ -266,19 +269,18 @@ All of these changes apply identically to Mainnet and Testnet.
 * By the previous point the NSM Value Balance can never become negative unless
   an implementation is in error. The consensus rule above makes such an error
   a block-validity failure rather than silently clamping the value.
-* The issuance formula depends only on
-  $\mathsf{NSMValueBalance}(\mathsf{height} - 1)$ and a single fraction,
-  making it simple to implement, explain, and verify.
+* The payout is known after block $\mathsf{height} - 2$, allowing miners to
+  precompute shielded coinbase proofs. Subtracting the already determined
+  payout for the intervening block prevents allocating the same reserve twice.
 
 ## Rationale for Parameters
 
 Because the formula reduces to the existing schedule whenever the NSM Value
 Balance is zero, the rule itself places no constraint on the deployment
 height. The only change at deployment is the reissuance of the NSM Value
-Balance at that point ($\mathsf{INITIAL\_NSM\_VALUE\_BALANCE}$ plus anything
-removed from circulation since NU7 activation) at
+Balance from two blocks earlier, less the preceding block's additional subsidy, at
 $\mathsf{BLOCK\_SUBSIDY\_FRACTION}$ per block. For example, if a total of
-100,000 ZEC were removed from circulation prior to activation, then at
+100,000 ZEC were removed from circulation at least two blocks before activation, then at
 activation the issuance would be larger than the Scheduled Block Subsidy by
 $100\_000\textsf{ ZEC} \cdot \mathsf{BLOCK\_SUBSIDY\_FRACTION}$, which we
 calculate equals $0.04126$ ZEC. This example is chosen to demonstrate that a
@@ -289,7 +291,7 @@ Since NU6, coinbase transactions are required to claim the full miner subsidy
 and fees [^zip-0236], so the part of the NSM Value Balance not attributable to
 funds removed from circulation is a fixed historical amount,
 $\mathsf{INITIAL\_NSM\_VALUE\_BALANCE}$: on Mainnet approximately 350.8 ZEC,
-reissued from deployment at an initial rate of about 0.00014 ZEC per block on
+reissued once eligible at an initial rate of about 0.00014 ZEC per block on
 the 75-second block schedule, or 0.00005 ZEC per block under ZIP 218, about
 0.17 ZEC per day either way.
 
