@@ -183,7 +183,7 @@ $\mathsf{DeriveNullifier}$, $\mathsf{MerkleCRH^{Orchard}}$,
 $\mathsf{MerkleDepth^{Orchard}}$, $\mathsf{Uncommitted^{Orchard}}$,
 $\mathsf{Extract}_{\mathbb{P}}$, $\mathsf{repr}_{\mathbb{P}}$,
 $\mathsf{ToBase^{Orchard}}$, $\mathsf{ToScalar^{Orchard}}$, $\mathsf{PRF^{expand}}$,
-$\mathsf{SpendAuthSig^{Orchard}}$, and the Action statement (§ 4.18.4) with primary
+$\mathsf{SpendAuthSig^{Orchard}}$, and the Action statement (§ ‘Action Statement (Orchard)’) with primary
 input $(\mathsf{rt}, \mathsf{cv^{net}}, \mathsf{nf^{old}}, \mathsf{rk}, \mathsf{cm}_x, \mathsf{enableSpends}, \mathsf{enableOutputs}, \mathsf{disableCrossAddress})$.
 
 Define, for a tag byte $t$, a 32-byte key $k$, and a byte string $x$:
