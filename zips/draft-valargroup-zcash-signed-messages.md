@@ -368,11 +368,12 @@ The fields and their meanings follow CAIP-122 [^caip-122].
 | `account`     | `lp8`     | The account being authorized, in the chain's native binary form as fixed by the chain binding. |
 | `expiresAt`   | `u64`     | Seconds since the Unix epoch. MUST be nonzero. |
 | `encoding`    | `u16`     | Payload encoding, from the chain binding's registry. |
-| `payloadHash` | 32 bytes  | The chain-native signing hash of the payload, as fixed by the chain binding for this `encoding`. |
+| `payload`     | `lp16`    | As fixed by the chain binding for this `encoding`: either the payload itself, or its 32-byte chain-native signing hash. |
 
-`payloadHash` is the only field of any kind that is not displayed directly. A
-Signer MUST compute it from the complete payload, which it MUST render as
-required by the chain binding.
+Where `payload` is the payload itself, the Signer displays it. Where it is a
+hash, it is the only field of any kind that is not displayed directly: a Signer
+MUST compute it from the complete payload, which it MUST render as required by
+the chain binding.
 
 ### `Register`
 
@@ -389,7 +390,7 @@ apply to the component with the trusted display; for a hardware wallet, that is
 the device, and the host is assumed to be malicious.
 
 1. A Signer MUST NOT expose any interface that signs a caller-supplied digest,
-   envelope hash, or `payloadHash` with $\mathsf{rsk}$ or with $\mathsf{ask}$. It
+   envelope hash, or payload hash with $\mathsf{rsk}$ or with $\mathsf{ask}$. It
    MUST construct $\mathsf{msg}$ and $\mathsf{digest}$ itself from the fields it
    displays.
 2. Before signing, a Signer MUST display the message kind, using the headings
@@ -424,7 +425,8 @@ the device, and the host is assumed to be malicious.
 ## Verifier requirements
 
 1. A Verifier MUST reject a message whose $\mathsf{idc}$ is not the identity it
-   has a certified $\mathsf{rk}$ for.
+   has a certified $\mathsf{rk}$ for, except where a chain binding identifies
+   accounts by $\mathsf{rk}$ alone.
 2. A Verifier that controls assets or permissions MUST accept only `ChainAction`
    messages whose `chain` and `account` equal its own chain identifier and
    account, whose `expiresAt` has not passed, and whose `encoding` it implements.
@@ -459,9 +461,10 @@ recomputes $\mathsf{idc}$ from the address.
 A chain binding MUST specify:
 
 * the CAIP-2 namespace it covers and the binary form of `account`;
-* a registry of `encoding` values, and for each one the payload format, how
-  `payloadHash` is computed from it, and the rendering rules a Signer follows;
-* how a Verifier on that chain obtains `payloadHash` and `expiresAt`, enforces
+* a registry of `encoding` values, and for each one the payload format, whether
+  `payload` carries it inline or as a hash (and how that hash is computed), and
+  the rendering rules a Signer follows;
+* how a Verifier on that chain obtains `payload` and `expiresAt`, enforces
   replay protection, and checks $\sigma$;
 * how the identity certificate is verified on that chain, including any wrapped
   proof format, and how the account address is derived from $\mathsf{idc}$.
@@ -470,8 +473,65 @@ A binding SHOULD reuse the chain's existing signing hash and rendering
 conventions unchanged, so that hardware wallet applications for that chain can
 reuse their parsers and add only the envelope.
 
-The bindings sketched below are provisional and are expected to be completed in
-this ZIP or split into companion ZIPs.
+The NEAR Intents binding is the primary target of this ZIP. The other bindings
+sketched below are provisional and are expected to be completed in this ZIP or
+split into companion ZIPs.
+
+### NEAR Intents (`near`)
+
+The NEAR Intents Verifier contract accepts intents signed under several wallet
+ecosystems' off-chain message standards. In each, the signed content is the same
+one-line JSON string, with members `signer_id`, `verifying_contract`, `deadline`,
+`nonce`, and `intents`. [^near-intents-signing] This binding adds one more
+standard to that set.
+
+| Envelope field | Value |
+|----------------|-------|
+| `chain`        | `near:mainnet` or `near:testnet` |
+| `account`      | The ASCII account id of the Verifier contract. MUST equal `verifying_contract` in the payload. |
+| `expiresAt`    | MUST equal `deadline` in the payload, rounded down to whole seconds. |
+| `encoding`     | `0x0001` |
+| `payload`      | The JSON string itself, inline. It MUST satisfy `Text` format `0x00` without `0x0A`, and MUST NOT exceed 2048 bytes. |
+
+The signed bytes are the JSON string exactly as displayed and exactly as the
+contract parses it, so no canonical form of JSON is needed.
+
+The signer's account is the implicit account whose `signer_id` is the lowercase
+hexadecimal encoding of the 32-byte $\mathsf{rk}$, as for other key types. An
+implicit account has its own key enabled by default, so no registration step and
+no proof verification are needed for it to act. $\mathsf{rk}$ MAY also be added
+to another account with `add_public_key`. Accounts made from different
+diversified addresses have unrelated $\mathsf{rk}$ values and are unlinkable.
+
+A signed intent is submitted with the standard name, the `payload` string,
+$\mathsf{idc}$, $\mathsf{rk}$ as the public key, and $\sigma$. The contract
+rebuilds $\mathsf{msg}$ from these and its own account id and checks $\sigma$
+against $\mathsf{rk}$. It checks the two equalities in the table above, and
+applies its existing `deadline` and `nonce` rules. In this binding the contract
+takes $\mathsf{idc}$ as supplied and does not verify a certificate; this is an
+exception to Verifier requirement 1. A party that needs to know which
+$\mathsf{idc}$ or payment address controls an account obtains the certificate
+off-chain and checks it against the account's $\mathsf{rk}$.
+
+A Signer MUST parse the JSON and MUST reject a payload that is not a single
+object with exactly the five members above, that has duplicate member names at
+any depth, or whose `signer_id` is not the account of the signing identity. It
+then displays:
+
+* `verifying_contract` and `deadline`;
+* each intent in order. For an intent type the Signer implements, it shows the
+  type and every member, for example each token id and signed amount of a
+  `token_diff`, or the token, receiver, amount, and memo of a withdrawal. For
+  any other intent type it shows that intent's JSON text in full.
+
+`nonce` MAY be omitted from display. Token amounts are in base units. A Signer
+MAY additionally show a symbol and decimal amount where it has authenticated
+metadata for the token id, and MUST show the token id and base-unit amount
+otherwise.
+
+Typical payloads are small: the examples in the NEAR Intents documentation are
+160 to 370 bytes, and a swap combined with a withdrawal to a unified address is
+around 650 bytes.
 
 ### EVM chains (`eip155`)
 
@@ -481,7 +541,7 @@ validator module for a modular account, or the delegate of an EIP-7702
 [^eip-7702] account. Its address SHOULD be a deterministic function of
 $\mathsf{idc}$ so that it can be funded before deployment.
 
-| `encoding` | Payload | `payloadHash` | Rendering |
+| `encoding` | Payload | `payload` (hash) | Rendering |
 |------------|---------|---------------|-----------|
 | `0x0001`   | EIP-712 typed data [^eip-712] | `keccak256(0x1901 ‖ domainSeparator ‖ hashStruct(message))` | Domain name, verifying contract, and every message field; ERC-7730 [^erc-7730] descriptors MAY be used for labels and formatting. |
 | `0x0002`   | ERC-4337 user operation | `userOpHash` for the EntryPoint in use | Sender, each call's target, value, and decoded calldata, fee limits. |
@@ -508,7 +568,7 @@ EIP-191 `personal_sign` payloads [^eip-191] are intentionally not given an
 Solana has no account abstraction at the protocol level, so `account` is the
 32-byte address of a program-derived account whose controlling program verifies
 $\sigma$. The payload is the ordered list of instructions that the program will
-invoke on behalf of that account, and `payloadHash` is the SHA-256 hash of their
+invoke on behalf of that account, and `payload` is the SHA-256 hash of their
 canonical serialization together with a nonce held in the account. Rendering
 follows the rules a Solana wallet applies to the same instructions, and a Signer
 MUST reject instructions for programs it cannot decode.
@@ -516,7 +576,7 @@ MUST reject instructions for programs it cannot decode.
 ### Cosmos SDK chains (`cosmos`)
 
 `account` is the account's address bytes. The payload is the transaction, and
-`payloadHash` is the SHA-256 hash of its `SIGN_MODE_TEXTUAL` sign bytes
+`payload` is the SHA-256 hash of its `SIGN_MODE_TEXTUAL` sign bytes
 [^adr-050], which are an encoding of the screens shown to the user. Rendering is
 exactly those screens.
 
@@ -710,7 +770,12 @@ are required before this ZIP can leave Draft.
   $\mathsf{rk}$ during `Register`.
 * A CAIP-2 identifier and CAIP-122 namespace for presenting Zcash signing
   identities to services that expect CAIP-10 accounts.
-* Completion of the chain bindings: account address derivation, nonce handling,
+* Whether the NEAR Intents Verifier should verify certificates on-chain, so that
+  accounts can be identified by $\mathsf{idc}$. The cost of Halo 2 verification
+  in a NEAR contract has not been measured.
+* Authenticated token metadata for hardware wallets, so that amounts can be shown
+  with symbols and decimals.
+* Completion of the other chain bindings: account address derivation, nonce handling,
   the wrapped certificate format, and normative rendering rules per encoding.
 * Whether a later version should add a hash-based proof of knowledge of
   $\mathsf{qsk}$ [^zip-2005] to give post-quantum unforgeability.
@@ -779,6 +844,8 @@ are required before this ZIP can leave Draft.
 [^solana-offchain]: [Solana: Off-Chain Message Signing](https://github.com/solana-labs/solana/blob/master/docs/src/proposals/off-chain-message-signing.md)
 
 [^siws]: [Sign In With Solana](https://github.com/phantom/sign-in-with-solana)
+
+[^near-intents-signing]: [NEAR Intents documentation: Signing Intents](https://docs.near-intents.org/integration/verifier-contract/signing-intents)
 
 [^adr-036]: [Cosmos SDK ADR 036: Arbitrary Message Signature Specification](https://docs.cosmos.network/main/build/architecture/adr-036-arbitrary-signature)
 
